@@ -8,9 +8,14 @@ on:
         required: true
         default: 'bacon'
       BUILD_TYPE:
-        description: 'Build Type (user/userdebug/eng)'
+        description: 'Build Type'
         required: true
         default: 'userdebug'
+        type: choice
+        options:
+        - userdebug
+        - user
+        - eng
       LOCAL_MANIFEST_URL:
         description: 'URL to Local Manifest XML'
         required: true
