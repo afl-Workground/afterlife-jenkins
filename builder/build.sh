@@ -61,8 +61,10 @@ source "$LOCALDIR/tg_utils.sh"
 
 function fetch_progress() {
     # Extracts the last Ninja progress line (e.g., [ 45% 1000/2000]) from the log
+    # We strip ANSI color codes with sed to ensure regex matches correctly
     local PROGRESS=$(
         tail -n 50 "$LOG_FILE" |
+        sed 's/\x1b\[[0-9;]*m//g' |
         grep -Po '\[\s*\d+% \d+/\d+\]' |
         tail -n 1
     )
@@ -130,8 +132,9 @@ MONITOR_PID=$!
 
 # 2. Execute the Build (Piping to log and stdout)
 # set -o pipefail ensures that if the build fails, the exit code is preserved even after piping to tee
+# stdbuf -oL -eL prevents output buffering so logs are written in real-time
 set -o pipefail
-$BUILD_CMD 2>&1 | tee "$LOG_FILE"
+stdbuf -oL -eL $BUILD_CMD 2>&1 | tee "$LOG_FILE"
 
 # Capture Exit Code immediately
 BUILD_STATUS=$?
