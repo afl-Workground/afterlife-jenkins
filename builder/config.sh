@@ -10,10 +10,13 @@ export DEVICE=${DEVICE:-"bacon"} # Default device if none provided
 export BUILD_TYPE=${BUILD_TYPE:-"userdebug"}
 
 # Directories
+# CRITICAL: Point ROOTDIR outside the GitHub Actions workspace to prevent auto-cleanup!
 export WORKSPACE=${WORKSPACE:-$(pwd)}
-export ROOTDIR="${WORKSPACE}/source"
-export CCACHE_DIR="${WORKSPACE}/ccache"
+# export ROOTDIR="${WORKSPACE}/source" <--- OLD (DANGEROUS)
+export ROOTDIR="${HOME}/android/source" # <--- NEW (SAFE & PERSISTENT & PORTABLE)
 
-# Ccache Configuration (Handled automatically by build/envsetup.sh)
-# export USE_CCACHE=1
-# export CCACHE_EXEC=$(which ccache)
+export CCACHE_DIR="${HOME}/android/ccache" # Also keep ccache outside
+
+# Ccache Configuration
+export USE_CCACHE=1
+export CCACHE_EXEC=/usr/bin/ccache

@@ -1,0 +1,174 @@
+name: AfterlifeOS Builder
+
+on:
+  workflow_dispatch:
+    inputs:
+      DEVICE:
+        description: 'Device Codename (e.g., raven)'
+        required: true
+        default: 'surya'
+      BUILD_TYPE:
+        description: 'Build Type'
+        required: true
+        default: 'userdebug'
+        type: choice
+        options:
+          - userdebug
+          - user
+          - eng
+      BUILD_VARIANT:
+        description: 'Build Variant'
+        required: true
+        default: 'test'
+        type: choice
+        options:
+          - test
+          - release
+      LOCAL_MANIFEST_URL:
+        description: 'URL to Local Manifest XML'
+        required: true
+      CLEAN_BUILD:
+        description: 'Request Full Clean Build (Admins Only)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  check-limit:
+    name: 🛡️ Gatekeeper (Check Queue & Quota)
+    runs-on: ubuntu-latest
+    outputs:
+      is_admin: ${{ steps.check_role.outputs.is_admin }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check Queue Depth
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Checking global queue depth..."
+          COUNT=$(gh run list --workflow afterlife_build.yml --status in_progress --json databaseId --limit 100 | jq length)
+          echo "Current active/queued workflows: $COUNT"
+          MAX_CONCURRENT=4
+          
+          if [[ "$COUNT" -gt "$MAX_CONCURRENT" ]]; then
+            echo "::error::⛔ QUEUE FULL! There are already 3 builds waiting in line."
+            echo "Please try again later when the queue clears."
+            exit 1
+          fi
+          
+          echo "✅ Queue check passed. System load is acceptable."
+
+      - name: Check Role & Rate Limit
+        id: check_role
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # --- 1. IDENTIFY USER ROLE ---
+          ACTOR=${{ github.actor }}
+          echo "Checking role for user: $ACTOR"
+          
+          PERM=$(gh api repos/${{ github.repository }}/collaborators/$ACTOR/permission --jq .permission)
+          echo "User permission: $PERM"
+
+          if [[ "$PERM" == "admin" || "$PERM" == "write" ]]; then
+            IS_ADMIN="true"
+            LIMIT=-1 # Unlimited
+          else
+            IS_ADMIN="false"
+            LIMIT=3  # Daily Limit for normal users
+          fi
+          
+          echo "is_admin=$IS_ADMIN" >> $GITHUB_OUTPUT
+
+          COUNTER_FILE=".github/workflow_counter.json"
+          CURRENT_DATE=$(date +%Y-%m-%d)
+
+          if [[ ! -f "$COUNTER_FILE" ]] || ! jq empty "$COUNTER_FILE" 2>/dev/null; then
+            echo '{}' > "$COUNTER_FILE"
+          fi
+
+          TODAY_RUNS=$(jq -r --arg user "$ACTOR" --arg date "$CURRENT_DATE" \
+            'if .[$user][$date] then .[$user][$date] else 0 end' "$COUNTER_FILE")
+
+          if [[ ! "$TODAY_RUNS" =~ ^[0-9]+$ ]]; then TODAY_RUNS=0; fi
+
+          echo "Usage for $ACTOR on $CURRENT_DATE: $TODAY_RUNS / $LIMIT"
+
+          if [[ $LIMIT -ne -1 && "$TODAY_RUNS" -ge $LIMIT ]]; then
+            echo "::error::User $ACTOR has reached the daily limit of $LIMIT builds."
+            exit 1
+          fi
+
+          NEW_RUNS=$((TODAY_RUNS + 1))
+          jq --arg user "$ACTOR" --arg date "$CURRENT_DATE" --argjson runs "$NEW_RUNS" \
+            'if .[$user] then .[$user][$date] = $runs else .[$user] = {($date): $runs} end' "$COUNTER_FILE" > tmp.json && mv tmp.json "$COUNTER_FILE"
+
+      - name: Commit Counter Update
+        run: |
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git pull --rebase origin main || echo "No changes to pull"
+          git add .github/workflow_counter.json
+          git commit -m "Update build quota for ${{ github.actor }}" || echo "Nothing to commit"
+          git push
+
+  build-on-vps:
+    name: 🏗️ Build ROM (${{ inputs.DEVICE }})
+    needs: check-limit
+    runs-on: self-hosted
+    concurrency:
+      group: shared-vps-builder
+      cancel-in-progress: false
+    timeout-minutes: 480 
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Prepare Scripts
+        run: chmod +x builder/*.sh
+
+      - name: Sync Source
+        env:
+          LOCAL_MANIFEST_URL: ${{ inputs.LOCAL_MANIFEST_URL }}
+        run: |
+          echo ">>> Starting Sync on VPS..."
+          bash builder/sync.sh
+
+      - name: Build ROM
+        env:
+          DEVICE: ${{ inputs.DEVICE }}
+          BUILD_TYPE: ${{ inputs.BUILD_TYPE }}
+          CLEAN_BUILD: ${{ inputs.CLEAN_BUILD }}
+          BUILD_VARIANT: ${{ inputs.BUILD_VARIANT }}
+          IS_ADMIN: ${{ needs.check-limit.outputs.is_admin }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          echo ">>> Starting Build for ${{ inputs.DEVICE }}..."
+          echo "Admin Status: $IS_ADMIN"
+          bash builder/build.sh
+
+      # Bagian ini yang sebelumnya rusak parah
+      - name: Handle Large Artifacts (Telegram/PixelDrain)
+        if: success()
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          echo ">>> Uploading to external storage..."
+          bash builder/smart_upload.sh ${{ inputs.DEVICE }}
+
+      - name: Upload Artifact to GitHub
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AfterlifeOS-${{ inputs.DEVICE }}-Info
+          # Hanya upload file kecil/info ke GitHub Artifacts untuk menghemat storage
+          path: |
+            source/out/target/product/${{ inputs.DEVICE }}/AfterlifeOS*.zip

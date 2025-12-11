@@ -33,6 +33,18 @@ if [ ! -z "$LOCAL_MANIFEST_URL" ]; then
         echo "[!] Failed to download local manifest. Check the URL."
         exit 1
     fi
+
+    # TRACKING LOGIC: Extract paths from the local manifest to track what we added
+    # We use a unique filename per device to avoid race condition conflicts
+    TRACK_FILE="tracked_paths_${DEVICE}.txt"
+    echo "[*] Tracking added paths from Local Manifest into $TRACK_FILE..."
+    
+    # Extracts text inside path="..." from the XML
+    grep -oP 'path="\K[^"]+' .repo/local_manifests/jenkins_local_manifest.xml > $TRACK_FILE
+    
+    echo "--- Tracked Paths ---"
+    cat $TRACK_FILE
+    echo "---------------------"
 else
     echo "[!] ERROR: No Local Manifest URL provided in sync.sh (Should be caught by Jenkinsfile validation)."
     exit 1

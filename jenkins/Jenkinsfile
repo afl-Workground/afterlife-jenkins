@@ -22,6 +22,7 @@ pipeline {
     parameters {
         string(name: 'DEVICE', defaultValue: 'bacon', description: 'Device Codename (e.g., raven, redfin)')
         string(name: 'BUILD_TYPE', defaultValue: 'userdebug', description: 'Build Type (user/userdebug/eng)')
+        choice(name: 'BUILD_VARIANT', choices: ['test', 'release'], description: 'Build Variant (test/release)')
         string(name: 'LOCAL_MANIFEST_URL', defaultValue: '', description: 'REQUIRED: URL to a raw XML local manifest (e.g., from GitHub Gist or Raw file)')
         booleanParam(name: 'CLEAN_BUILD', defaultValue: false, description: 'Wipe out directory before build? (Not recommended for CI speed)')
     }
