@@ -42,9 +42,6 @@ pipeline {
                 script {
                     echo "Preparing build for ${params.DEVICE}..."
                     sh 'chmod +x afterlife-jenkins-setup/builder/*.sh'
-                    
-                    sh 'git config --global user.email "jenkins@afterlifeos.com"'
-                    sh 'git config --global user.name "Afterlife Builder"'
                 }
             }
         }
