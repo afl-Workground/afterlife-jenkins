@@ -132,9 +132,8 @@ MONITOR_PID=$!
 
 # 2. Execute the Build (Piping to log and stdout)
 # set -o pipefail ensures that if the build fails, the exit code is preserved even after piping to tee
-# stdbuf -oL -eL prevents output buffering so logs are written in real-time
 set -o pipefail
-stdbuf -oL -eL $BUILD_CMD 2>&1 | tee "$LOG_FILE"
+$BUILD_CMD 2>&1 | tee "$LOG_FILE"
 
 # Capture Exit Code immediately
 BUILD_STATUS=$?
