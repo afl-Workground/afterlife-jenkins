@@ -60,12 +60,13 @@ source "$LOCALDIR/tg_utils.sh"
 # --- HELPER FUNCTIONS (From Reference) ---
 
 function fetch_progress() {
-    # Extracts the last Ninja progress line (e.g., [ 45% 1000/2000]) from the log
+    # Extracts the last Ninja progress line (e.g., [ 45% 1000/2000] or [ 77% 100/200 1m remaining]) from the log
     # We strip ANSI color codes with sed to ensure regex matches correctly
+    # Regex updated to capture everything inside brackets starting with percentage
     local PROGRESS=$(
         tail -n 50 "$LOG_FILE" |
         sed 's/\x1b\[[0-9;]*m//g' |
-        grep -Po '\[\s*\d+% \d+/\d+\]' |
+        grep -Po '\[\s*\d+%[^]]*\]' |
         tail -n 1
     )
 
