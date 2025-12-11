@@ -1,0 +1,139 @@
+pipeline {
+    agent any
+
+    // QUEUE CONFIGURATION
+    options {
+        // Key: Only allow 1 build to run at a time.
+        // Other builds will be queued.
+        disableConcurrentBuilds()
+        
+        // Optional: Add timestamps to logs
+        timestamps()
+    }
+
+    environment {
+        BUILD_HOSTNAME = "jenkins-builder"
+        // You should configure TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
+        // in Jenkins Global Configuration (System) or using Jenkins Credentials.
+        TELEGRAM_BOT_TOKEN = credentials('telegram-bot-token')
+        TELEGRAM_CHAT_ID = credentials('telegram-chat-id')
+    }
+
+    parameters {
+        string(name: 'DEVICE', defaultValue: 'bacon', description: 'Device Codename (e.g., raven, redfin)')
+        string(name: 'BUILD_TYPE', defaultValue: 'userdebug', description: 'Build Type (user/userdebug/eng)')
+        string(name: 'LOCAL_MANIFEST_URL', defaultValue: '', description: 'REQUIRED: URL to a raw XML local manifest (e.g., from GitHub Gist or Raw file)')
+        booleanParam(name: 'CLEAN_BUILD', defaultValue: false, description: 'Wipe out directory before build? (Not recommended for CI speed)')
+    }
+
+    stages {
+        stage('Validation') {
+            steps {
+                script {
+                    if (!params.LOCAL_MANIFEST_URL || params.LOCAL_MANIFEST_URL.trim() == "") {
+                        error "BUILD FAILED: You MUST provide a LOCAL_MANIFEST_URL. This field is required."
+                    }
+                }
+            }
+        }
+
+        stage('Preparation') {
+            steps {
+                script {
+                    echo "Preparing build for ${params.DEVICE}..."
+                    sh 'chmod +x afterlife-jenkins-setup/builder/*.sh'
+                    
+                    sh 'git config --global user.email "jenkins@afterlifeos.com"'
+                    sh 'git config --global user.name "Afterlife Builder"'
+                }
+            }
+        }
+
+        stage('Sync Source') {
+            steps {
+                sh 'bash afterlife-jenkins-setup/builder/sync.sh'
+            }
+        }
+
+        stage('Build ROM') {
+            steps {
+                sh 'bash afterlife-jenkins-setup/builder/build.sh'
+            }
+        }
+
+        stage('Archive Artifacts') {
+            steps {
+                archiveArtifacts artifacts: 'source/out/target/product/${DEVICE}/*.zip', allowEmptyArchive: true
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                echo "[*] Cleaning up Local Manifests..."
+                sh 'rm -f source/.repo/local_manifests/jenkins_local_manifest.xml'
+            }
+        }
+        failure {
+            script {
+                echo "Sending Telegram notification for FAILED build..."
+                
+                def errorLogContent = ""
+                def errorLogFileName = "error.log"
+                def errorFilePath = "source/out/${errorLogFileName}" // Path relative to Jenkins workspace root
+                
+                // If error.log is not found or empty, create a temporary file from console output
+                if (!fileExists(errorFilePath) || readFile(errorFilePath).trim().isEmpty()) {
+                    errorLogFileName = "build_console_error.log"
+                    errorFilePath = "${errorLogFileName}" // Store in root workspace
+                    sh "tail -n 1000 \"${currentBuild.logFile}\" > ${errorFilePath}" // Get last 1000 lines of console log
+                    echo "error.log not found or empty. Created temporary console log file: ${errorFilePath}"
+                } else {
+                    echo "Using error.log from build output: ${errorFilePath}"
+                }
+                
+                // Create caption for the document
+                def caption = """
+                    🚨 *AfterlifeOS Build FAILED!* 🚨
+                    *Project:* ${env.JOB_NAME}
+                    *Build Number:* ${env.BUILD_NUMBER}
+                    *Device:* `${params.DEVICE}`
+                    *Build Type:* `${params.BUILD_TYPE}`
+                    *Reason:* ${currentBuild.result} in stage '${env.STAGE_NAME}'
+                    *Build Link:* ${env.BUILD_URL}
+                    ""
+                
+                // Send log file as a document using curl to Telegram Bot API
+                sh """
+                    curl -s -X POST \
+                    -F document=@${errorFilePath} \
+                    -F chat_id=\"${env.TELEGRAM_CHAT_ID}\" \
+                    -F caption=\"${caption}\" \
+                    -F parse_mode=\"Markdown\" \
+                    \"https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendDocument\"
+                """
+                
+                // Optional: Remove temporary file if created
+                if (fileExists("${errorLogFileName}") && errorLogFileName == "build_console_error.log") {
+                    sh "rm ${errorLogFileName}"
+                }
+            }
+        }
+        success {
+            script {
+                echo "Sending Telegram notification for SUCCESSFUL build..."
+                def message = """
+                    ✅ *AfterlifeOS Build SUCCESS!* ✅
+                    *Project:* ${env.JOB_NAME}
+                    *Build Number:* ${env.BUILD_NUMBER}
+                    *Device:* `${params.DEVICE}`
+                    *Build Type:* `${params.BUILD_TYPE}`
+                    *Build Link:* ${env.BUILD_URL}
+                    """
+                // Using telegramSend plugin for successful text notification
+                telegramSend text: message, parseMode: 'Markdown'
+            }
+        }
+    }
+}
