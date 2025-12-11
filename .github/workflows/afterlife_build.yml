@@ -136,6 +136,7 @@ jobs:
       - name: Sync Source
         env:
           LOCAL_MANIFEST_URL: ${{ inputs.LOCAL_MANIFEST_URL }}
+          DEVICE: ${{ inputs.DEVICE }}
         run: |
           echo ">>> Starting Sync on VPS..."
           bash builder/sync.sh

@@ -12,7 +12,7 @@ mkdir -p "$CCACHE_DIR"
 export CCACHE_DIR="$CCACHE_DIR"
 
 echo "[*] Setting up Environment..."
-. build/envsetup.sh
+source build/envsetup.sh
 
 # CLEAN_BUILD Logic
 # Enforce Admin restriction for full wipes
@@ -54,22 +54,38 @@ surgical_clean() {
     fi
 }
 
-# Execute Cleanup
-surgical_clean
-
 # Import Telegram Utils
-source builder/tg_utils.sh
+source "$LOCALDIR/tg_utils.sh"
+
+# --- HELPER FUNCTIONS (From Reference) ---
+
+function fetch_progress() {
+    # Extracts the last Ninja progress line (e.g., [ 45% 1000/2000]) from the log
+    local PROGRESS=$(
+        tail -n 50 "$LOG_FILE" |
+        grep -Po '\[\s*\d+% \d+/\d+\]' |
+        tail -n 1
+    )
+
+    if [ -z "$PROGRESS" ]; then
+        echo "Initializing..."
+    else
+        echo "$PROGRESS"
+    fi
+}
 
 # --- TELEGRAM START NOTIFICATION ---
-BUILD_START_TIME=$(date +"%Y-%m-%d %H:%M:%S")
+BUILD_START_TIME_READABLE=$(date +"%Y-%m-%d %H:%M:%S")
+BUILD_START_TIMESTAMP=$(date +"%s")
 JOB_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
+# HTML Formatted Start Message
 START_MSG="🚀 *AfterlifeOS Build Started!*
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\`
 *Variant:* \`${BUILD_VARIANT}\`
 *Host:* \`VPS-Runner\`
-*Date:* ${BUILD_START_TIME}
+*Date:* ${BUILD_START_TIME_READABLE}
 
 [View Action Log](${JOB_URL})"
 
@@ -80,7 +96,8 @@ echo "Telegram Message ID: $MSG_ID"
 # --- BUILD PROCESS WITH MONITORING ---
 
 echo "[*] Running goafterlife for device ${DEVICE}..."
-LOG_FILE="build_progress.log"
+LOG_FILE="${ROOTDIR}/build_progress.log" # Use absolute path in ROOTDIR
+rm -f "$LOG_FILE"
 
 # Define the build command based on variant
 if [ "$BUILD_VARIANT" = "release" ]; then
@@ -91,48 +108,60 @@ fi
 
 # 1. Start Monitoring Loop in Background
 (
+    previous_progress=""
     while true; do
-        sleep 15
+        sleep 20
         # Check if process is still running (we'll kill this loop later)
         
-        # Grep the last progress line: [ 15% 1234/5678]
-        # We use 'tr' to clean up control characters if any
-        PROGRESS=$(grep -o "\[ *[0-9]*% [0-9]*/[0-9]*\]" $LOG_FILE | tail -n 1)
+        CURRENT_PROGRESS=$(fetch_progress)
         
-        if [ ! -z "$PROGRESS" ]; then
+        if [ "$CURRENT_PROGRESS" != "$previous_progress" ] && [ "$CURRENT_PROGRESS" != "Initializing..." ]; then
             NEW_TEXT="🚀 *AfterlifeOS Build in Progress...*
 *Device:* \`${DEVICE}\`
-*Current Status:* \`${PROGRESS}\`
+*Current Status:* \`${CURRENT_PROGRESS}\`
 *Job:* [Click Here](${JOB_URL})"
             
             tg_edit_message "$MSG_ID" "$NEW_TEXT"
+            previous_progress="$CURRENT_PROGRESS"
         fi
     done
 ) &
 MONITOR_PID=$!
 
 # 2. Execute the Build (Piping to log and stdout)
-# We use 'tee' so Jenkins/GitHub still sees the logs in real-time
-$BUILD_CMD 2>&1 | tee $LOG_FILE
+# set -o pipefail ensures that if the build fails, the exit code is preserved even after piping to tee
+set -o pipefail
+$BUILD_CMD 2>&1 | tee "$LOG_FILE"
 
-# Capture Exit Code
-BUILD_STATUS=${PIPESTATUS[0]}
+# Capture Exit Code immediately
+BUILD_STATUS=$?
+set +o pipefail
 
 # 3. Kill Monitor Loop
-kill $MONITOR_PID
+kill $MONITOR_PID 2>/dev/null
 
 # --- POST BUILD NOTIFICATION ---
 
-END_TIME=$(date +"%Y-%m-%d %H:%M:%S")
+BUILD_END_TIMESTAMP=$(date +"%s")
+DIFFERENCE=$((BUILD_END_TIMESTAMP - BUILD_START_TIMESTAMP))
+HOURS=$(($DIFFERENCE / 3600))
+MINUTES=$((($DIFFERENCE % 3600) / 60))
 
-if [ $BUILD_STATUS -eq 0 ]; then
-    echo "BUILD SUCCESS!"
+# --- VERIFY BUILD SUCCESS ---
+# We verify success by checking if the output ZIP actually exists.
+# This prevents "False Success" when the build tool crashes/panics but returns exit code 0.
+
+# Define expected output path
+SRC_OUT="${ROOTDIR}/out/target/product/${DEVICE}"
+ZIP_FILE_CHECK=$(ls "$SRC_OUT"/AfterlifeOS*.zip 2>/dev/null | head -n 1)
+
+if [ $BUILD_STATUS -eq 0 ] && [ ! -z "$ZIP_FILE_CHECK" ] && [ -f "$ZIP_FILE_CHECK" ]; then
+    echo "BUILD SUCCESS! Artifact found: $ZIP_FILE_CHECK"
     
     # --- COPY ARTIFACTS TO WORKSPACE ---
     # GitHub Actions/Jenkins can only upload artifacts from within their own workspace.
     # Since we build in an external ROOTDIR, we must copy the results back.
     
-    SRC_OUT="${ROOTDIR}/out/target/product/${DEVICE}"
     DEST_OUT="${WORKSPACE}/source/out/target/product/${DEVICE}"
     
     echo "[*] Copying artifacts to Workspace for Upload..."
@@ -145,38 +174,56 @@ if [ $BUILD_STATUS -eq 0 ]; then
     echo "    -> Artifacts copied to: $DEST_OUT"
     # -----------------------------------
     
+    # Get File Info for Message
+    ZIP_FILE=$(ls "$DEST_OUT"/AfterlifeOS*.zip | head -n 1)
+    if [ -f "$ZIP_FILE" ]; then
+        FILE_SIZE=$(ls -sh "$ZIP_FILE" | awk '{print $1}')
+        MD5SUM=$(md5sum "$ZIP_FILE" | awk '{print $1}')
+    else
+        FILE_SIZE="Unknown"
+        MD5SUM="Unknown"
+    fi
+
     SUCCESS_MSG="✅ *AfterlifeOS Build SUCCESS!*
 *Device:* \`${DEVICE}\`
 *Variant:* \`${BUILD_VARIANT}\`
-*Time:* ${END_TIME}
+*Size:* \`${FILE_SIZE}\`
+*MD5:* \`${MD5SUM}\`
+*Duration:* ${HOURS}h ${MINUTES}m
 
 📦 *Artifacts will be available here:*
 [Download Page](${JOB_URL})"
 
     # Reply/Edit with Success
-    tg_send_message "$SUCCESS_MSG"
+    tg_edit_message "$MSG_ID" "$SUCCESS_MSG"
 
 else
-    echo "BUILD FAILED!"
+    echo "BUILD FAILED! (Exit Code: $BUILD_STATUS or No Zip File)"
     
     FAILURE_MSG="❌ *AfterlifeOS Build FAILED!*
 *Device:* \`${DEVICE}\`
-*Time:* ${END_TIME}
+*Duration:* ${HOURS}h ${MINUTES}m
 *Check the attached log for details.*"
 
-    tg_send_message "$FAILURE_MSG"
+    tg_edit_message "$MSG_ID" "$FAILURE_MSG"
 
     # Try to find the error log
-    ERROR_LOG="out/error.log"
+    ERROR_LOG="${ROOTDIR}/out/error.log"
     if [ ! -f "$ERROR_LOG" ]; then
         # If no specific error log, take the tail of our build log
         echo "out/error.log not found, using tail of build log..."
-        tail -n 200 $LOG_FILE > build_error_snippet.log
+        tail -n 200 "$LOG_FILE" > build_error_snippet.log
         ERROR_LOG="build_error_snippet.log"
     fi
     
     tg_upload_log "$ERROR_LOG" "Build Failure Log - ${DEVICE}"
+    
+    # Clean up before exit
+    surgical_clean
     exit 1
 fi
 
-rm -f $LOG_FILE
+rm -f "$LOG_FILE"
+
+# Final Cleanup (Success Case)
+surgical_clean

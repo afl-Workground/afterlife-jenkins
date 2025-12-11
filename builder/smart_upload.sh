@@ -65,10 +65,8 @@ Uploading to Gofile server... This may take a while."
         
         # Send Success Message
         SUCCESS_MSG="✅ *AfterlifeOS Gofile Upload Complete!*
-*Device:* \
-`${DEVICE}`\
-*File:* \
-`${FILE_NAME}`\
+*Device:* \`${DEVICE}\`
+*File:* \`${FILE_NAME}\`
 *Link:* [Download Here](${DOWNLOAD_LINK})"
         tg_send_message "$SUCCESS_MSG"
         
