@@ -78,10 +78,10 @@ function fetch_progress() {
     fi
 
     # 3. If it passes the filter above, this is the Ninja phase (Compilation)
-    # Extract Percentage (digits before %)
-    local PCT=$(echo "$RAW_LOG" | grep -oP '\d+(?=%)' | head -n1)
-    # Extract Counts (digits/digits)
-    local COUNTS=$(echo "$RAW_LOG" | grep -oP '\d+/\d+' | head -n1)
+    # Extract Percentage (digits before comma)
+    local PCT=$(echo "$RAW_LOG" | cut -d',' -f1)
+    # Extract Counts (digits after comma)
+    local COUNTS=$(echo "$RAW_LOG" | cut -d',' -f2)
     
     # Validation: Safety net if parsing fails
     if [ -z "$PCT" ] || [ -z "$COUNTS" ]; then
@@ -109,9 +109,8 @@ JOB_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
 # HTML Formatted Start Message
 START_MSG="🚀 *AfterlifeOS Build Started!*
 *Device:* \`${DEVICE}\`
-*Type:* \`${BUILD_TYPE}\`
-*Variant:* \`${BUILD_VARIANT}\`
-*Host:* \`VPS-Runner\`
+*Type:* \`${BUILD_TYPE}\` | *Variant:* \`${BUILD_VARIANT}\`
+*Host:* \`$(hostname)\`
 *Date:* ${BUILD_START_TIME_READABLE}
 
 [View Action Log](${JOB_URL})"
@@ -120,11 +119,38 @@ START_MSG="🚀 *AfterlifeOS Build Started!*
 MSG_ID=$(tg_send_message "$START_MSG")
 echo "Telegram Message ID: $MSG_ID"
 
+# --- TRAP FOR CANCELLATION ---
+function handle_cancel() {
+    echo " [!] Received Termination Signal (User Cancelled?)"
+    
+    # Calculate duration
+    local END_TIME=$(date +"%s")
+    local DIFF=$((END_TIME - BUILD_START_TIMESTAMP))
+    local H=$(($DIFF / 3600))
+    local M=$((($DIFF % 3600) / 60))
+    
+                    local CANCEL_MSG="🚫 *AfterlifeOS Build Cancelled!*
+            *Device:* \`${DEVICE}\`
+            *Type:* \`${BUILD_TYPE}\`
+            *Duration:* ${H}h ${M}m
+            
+            [View Action Log](${JOB_URL})"    tg_edit_message "$MSG_ID" "$CANCEL_MSG"
+    
+    # Kill monitor and exit
+    if [ ! -z "$MONITOR_PID" ]; then
+        kill $MONITOR_PID 2>/dev/null
+    fi
+    exit 130
+}
+
+# Trap SIGINT (Ctrl+C) and SIGTERM (GitHub Cancel)
+trap 'handle_cancel' SIGINT SIGTERM
+
 # --- BUILD PROCESS WITH MONITORING ---
 
 echo "[*] Running goafterlife for device ${DEVICE}..."
 LOG_FILE="${ROOTDIR}/build_progress.log" # Use absolute path in ROOTDIR
-FILTERED_LOG="${ROOTDIR}/progress_filtered.log" # File dedicated to holding clean progress logs
+FILTERED_LOG="${ROOTDIR}/monitoring_progress.log" # File dedicated to holding clean progress logs
 rm -f "$LOG_FILE" "$FILTERED_LOG"
 
 # MARK STATE FOR NEXT BUILD (Lazy Cleanup)
@@ -148,11 +174,12 @@ fi
         CURRENT_PROGRESS=$(fetch_progress)
         
         if [ "$CURRENT_PROGRESS" != "$previous_progress" ] && [ "$CURRENT_PROGRESS" != "Initializing..." ]; then
-            NEW_TEXT="🚀 *AfterlifeOS Build in Progress...*
+            NEW_TEXT="⚙️ *AfterlifeOS Build in Progress...*
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\`
 *Build Progress:* \`${CURRENT_PROGRESS}\`
-*Job:* [Click Here](${JOB_URL})"
+
+[View Realtime Log](${JOB_URL})"
             
             tg_edit_message "$MSG_ID" "$NEW_TEXT"
             previous_progress="$CURRENT_PROGRESS"
@@ -166,7 +193,7 @@ MONITOR_PID=$!
 # Technique: Tee to LOG_FILE, but also pipe (process substitution) to grep to create FILTERED_LOG
 # Note: We add 'sed' to strip ANSI color codes before grep, so the regex '^[' can match.
 set -o pipefail
-$BUILD_CMD 2>&1 | tee "$LOG_FILE" >(sed -u 's/\x1b\[[0-9;]*m//g' | grep --line-buffered -P '^\[\s*[0-9]+% [0-9]+/[0-9]+' > "$FILTERED_LOG")
+$BUILD_CMD 2>&1 | tee "$LOG_FILE" >(sed -u 's/\x1b\[[0-9;]*m//g' | grep --line-buffered -P '^\[\s*[0-9]+% [0-9]+/[0-9]+' | sed -E 's/^\\[\\s]*([0-9]+)%\\s*([0-9]+\\/[0-9]+).*$/\\1,\\2/' | stdbuf -o0 awk -v logfile="${ROOTDIR}/monitoring_progress.log" '{ print $0 > logfile }')
 
 # Capture Exit Code immediately
 BUILD_STATUS=$?
@@ -221,13 +248,12 @@ if [ $BUILD_STATUS -eq 0 ] && [ ! -z "$ZIP_FILE_CHECK" ] && [ -f "$ZIP_FILE_CHEC
 
     SUCCESS_MSG="✅ *AfterlifeOS Build SUCCESS!*
 *Device:* \`${DEVICE}\`
-*Type:* \`${BUILD_TYPE}\`
-*Variant:* \`${BUILD_VARIANT}\`
+*Type:* \`${BUILD_TYPE}\` | *Variant:* \`${BUILD_VARIANT}\`
 *Size:* \`${FILE_SIZE}\`
 *MD5:* \`${MD5SUM}\`
 *Duration:* ${HOURS}h ${MINUTES}m
 
-📦 *Artifacts will be available here:*
+📦 *Artifacts available:*
 [Download Page](${JOB_URL})"
 
     # Reply/Edit with Success
@@ -240,7 +266,9 @@ else
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\`
 *Duration:* ${HOURS}h ${MINUTES}m
-*Check the attached log for details.*"
+
+*Check the attached log for details:*
+[View Detailed Log](${JOB_URL})"
 
     tg_edit_message "$MSG_ID" "$FAILURE_MSG"
 

@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       DEVICE:
-        description: 'Device Codename (e.g., raven)'
+        description: 'Device Codename (e.g., surya, raven)'
         required: true
-        default: 'surya'
+
       BUILD_TYPE:
         description: 'Build Type'
         required: true
@@ -81,7 +81,7 @@ jobs:
           PERM=$(gh api repos/${{ github.repository }}/collaborators/$ACTOR/permission --jq .permission)
           echo "User permission: $PERM"
 
-          if [[ "$PERM" == "admin" || "$PERM" == "write" ]]; then
+          if [[ "$PERM" == "admin" ]]; then
             IS_ADMIN="true"
             LIMIT=-1 # Unlimited
           else
