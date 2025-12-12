@@ -30,7 +30,7 @@ echo "Limit: $LIMIT_BYTES bytes"
 upload_to_gofile() {
     local fpath="$1"
     
-    echo "    -> Uploading to Gofile (Direct)..."
+    echo "    -> Uploading to Gofile (Direct)..." >&2
     # Using direct endpoint as requested for stability
     UPLOAD_RESPONSE=$(curl -# -X POST https://upload.gofile.io/uploadfile -F "file=@$fpath")
     
@@ -41,7 +41,7 @@ upload_to_gofile() {
         echo "$DOWNLOAD_LINK"
         return 0
     else
-        echo "Error: $UPLOAD_RESPONSE"
+        echo "Error: $UPLOAD_RESPONSE" >&2
         return 1
     fi
 }
