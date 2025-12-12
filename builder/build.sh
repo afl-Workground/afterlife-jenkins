@@ -126,6 +126,10 @@ LOG_FILE="${ROOTDIR}/build_progress.log" # Use absolute path in ROOTDIR
 FILTERED_LOG="${ROOTDIR}/progress_filtered.log" # File khusus untuk menampung log progress bersih
 rm -f "$LOG_FILE" "$FILTERED_LOG"
 
+# MARK STATE FOR NEXT BUILD (Lazy Cleanup)
+echo "${DEVICE}" > "${ROOTDIR}/.last_build_device"
+echo "[*] State saved: Next build will check this device tag."
+
 # Define the build command based on variant
 if [ "$BUILD_VARIANT" = "release" ]; then
     BUILD_CMD="goafterlife ${DEVICE} ${BUILD_TYPE} --release"
@@ -145,6 +149,7 @@ fi
         if [ "$CURRENT_PROGRESS" != "$previous_progress" ] && [ "$CURRENT_PROGRESS" != "Initializing..." ]; then
             NEW_TEXT="🚀 *AfterlifeOS Build in Progress...*
 *Device:* \`${DEVICE}\`
+*Type:* \`${BUILD_TYPE}\`
 *Build Progress:* \`${CURRENT_PROGRESS}\`
 *Job:* [Click Here](${JOB_URL})"
             
@@ -215,6 +220,7 @@ if [ $BUILD_STATUS -eq 0 ] && [ ! -z "$ZIP_FILE_CHECK" ] && [ -f "$ZIP_FILE_CHEC
 
     SUCCESS_MSG="✅ *AfterlifeOS Build SUCCESS!*
 *Device:* \`${DEVICE}\`
+*Type:* \`${BUILD_TYPE}\`
 *Variant:* \`${BUILD_VARIANT}\`
 *Size:* \`${FILE_SIZE}\`
 *MD5:* \`${MD5SUM}\`
@@ -231,6 +237,7 @@ else
     
     FAILURE_MSG="❌ *AfterlifeOS Build FAILED!*
 *Device:* \`${DEVICE}\`
+*Type:* \`${BUILD_TYPE}\`
 *Duration:* ${HOURS}h ${MINUTES}m
 *Check the attached log for details.*"
 
@@ -248,11 +255,14 @@ else
     tg_upload_log "$ERROR_LOG" "Build Failure Log - ${DEVICE}"
     
     # Clean up before exit
-    surgical_clean
+    # LAZY CLEANUP: We DO NOT clean here anymore. 
+    # If the user rebuilds the same device, we want these files.
+    # If they build a different device, 'sync.sh' will handle the cleanup.
     exit 1
 fi
 
 rm -f "$LOG_FILE" "$FILTERED_LOG"
 
 # Final Cleanup (Success Case)
-surgical_clean
+# LAZY CLEANUP: No action needed. 'sync.sh' handles the next run.
+echo "Build complete. Artifacts preserved for potential re-run."

@@ -32,6 +32,11 @@ on:
         required: false
         type: boolean
         default: false
+      DIRTY_BUILD:
+        description: 'Dirty Build (Skip manifest wipe)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -137,6 +142,7 @@ jobs:
         env:
           LOCAL_MANIFEST_URL: ${{ inputs.LOCAL_MANIFEST_URL }}
           DEVICE: ${{ inputs.DEVICE }}
+          DIRTY_BUILD: ${{ inputs.DIRTY_BUILD }}
         run: |
           echo ">>> Starting Sync on VPS..."
           bash builder/sync.sh
@@ -146,6 +152,7 @@ jobs:
           DEVICE: ${{ inputs.DEVICE }}
           BUILD_TYPE: ${{ inputs.BUILD_TYPE }}
           CLEAN_BUILD: ${{ inputs.CLEAN_BUILD }}
+          DIRTY_BUILD: ${{ inputs.DIRTY_BUILD }}
           BUILD_VARIANT: ${{ inputs.BUILD_VARIANT }}
           IS_ADMIN: ${{ needs.check-limit.outputs.is_admin }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
@@ -163,6 +170,7 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_TOPIC_ID: ${{ secrets.TELEGRAM_TOPIC_ID }}
+          BUILD_TYPE: ${{ inputs.BUILD_TYPE }}
         run: |
           echo ">>> Uploading to external storage..."
           bash builder/smart_upload.sh ${{ inputs.DEVICE }}
