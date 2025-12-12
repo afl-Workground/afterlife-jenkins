@@ -60,27 +60,43 @@ source "$LOCALDIR/tg_utils.sh"
 # --- HELPER FUNCTIONS (From Reference) ---
 
 function fetch_progress() {
-    # 1. Get raw log tail (clean ANSI codes)
-    local RAW_LOG=$(tail -n 20 "$LOG_FILE" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g')
+    # 1. Get raw log tail (clean ANSI codes) and filter for lines starting with '[' (progress)
+    local RAW_LOG=$(tail -n 50 "$LOG_FILE" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -P '^\[' | tail -n 1)
 
-    # 2. Check for Ninja Progress (Compilation Phase) - Priority 1
-    # Matches: [ 10% ... ]
-    local NINJA_PROGRESS=$(echo "$RAW_LOG" | grep -Po '\[\s*\d+%[^]]*\]' | tail -n 1)
-
-    if [ ! -z "$NINJA_PROGRESS" ]; then
-        echo "$NINJA_PROGRESS"
+    if [ -z "$RAW_LOG" ]; then
+        echo "Initializing..."
         return
     fi
 
-    # 3. Check for Config/Analysis Phase (Soong/Kati/Make) - Priority 2
-    # Keywords: including, finishing, writing, soong, kati, Analysing, Android.bp
-    if echo "$RAW_LOG" | grep -qE "including |finishing legacy|writing legacy|soong|kati|Analysing|Android.bp|bootstrap|glob"; then
-        echo "Initializing Build System (Soong/Kati)..."
+    # 2. Check for Kati/Soong keywords (Initialization Phase)
+    # If the progress line contains these, it's not the main compilation yet.
+    if echo "$RAW_LOG" | grep -qE "finishing|analyzing|analyzing|bootstrap|writing|including|kati|soong"; then
+        echo "Initializing Build System..."
         return
     fi
 
-    # 4. Default / Fallback
-    echo "Preparing..."
+    # 3. Parse Data for Ninja (Compilation Phase)
+    # Extract Percentage (digits before %)
+    local PCT=$(echo "$RAW_LOG" | grep -oP '\d+(?=%)' | head -n1)
+    # Extract Counts (digits/digits)
+    local COUNTS=$(echo "$RAW_LOG" | grep -oP '\d+/\d+' | head -n1)
+    
+    # Validation: If parsing fails, fallback to raw log (safety net)
+    if [ -z "$PCT" ] || [ -z "$COUNTS" ]; then
+        echo "$RAW_LOG"
+        return
+    fi
+
+    # 4. Generate Progress Bar (10 blocks total)
+    local FILLED=$((PCT / 10))
+    local EMPTY=$((10 - FILLED))
+    local BAR=""
+    
+    for ((i=0; i<FILLED; i++)); do BAR="${BAR}█"; done
+    for ((i=0; i<EMPTY; i++)); do BAR="${BAR}░"; done
+
+    # 5. Format Output
+    echo "Build Progress: [${BAR}] ${PCT}% (${COUNTS} actions)"
 }
 
 # --- TELEGRAM START NOTIFICATION ---
@@ -119,7 +135,7 @@ fi
 (
     previous_progress=""
     while true; do
-        sleep 20
+        sleep 10
         # Check if process is still running (we'll kill this loop later)
         
         CURRENT_PROGRESS=$(fetch_progress)
