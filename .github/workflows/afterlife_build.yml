@@ -163,7 +163,7 @@ jobs:
           echo "Admin Status: $IS_ADMIN"
           bash builder/build.sh
 
-      # Bagian ini yang sebelumnya rusak parah
+      # This part was previously severely broken
       - name: Handle Large Artifacts (Telegram/PixelDrain)
         if: success()
         env:
@@ -180,6 +180,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: AfterlifeOS-${{ inputs.DEVICE }}-Info
-          # Hanya upload file kecil/info ke GitHub Artifacts untuk menghemat storage
+          # Only upload small files/info to GitHub Artifacts to save storage
           path: |
             source/out/target/product/${{ inputs.DEVICE }}/AfterlifeOS*.zip

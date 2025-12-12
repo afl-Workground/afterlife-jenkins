@@ -29,7 +29,7 @@ echo "    -> Previous Device: '${LAST_DEVICE}'"
 echo "    -> Current Device:  '${DEVICE}'"
 echo "    -> Dirty Requested: '${DIRTY_BUILD}'"
 
-# Validasi Dirty Build
+# Dirty Build Validation
 if [ "$DIRTY_BUILD" = "true" ]; then
     if [ "$DEVICE" == "$LAST_DEVICE" ]; then
         echo "[*] VALIDATED: Safe to proceed with Dirty Build."
@@ -40,11 +40,11 @@ if [ "$DIRTY_BUILD" = "true" ]; then
     fi
 fi
 
-# Eksekusi Cleanup jika Dirty Build OFF (atau dimatikan paksa di atas)
+# Execute Cleanup if Dirty Build is OFF (or forced off above)
 if [ "$DIRTY_BUILD" != "true" ]; then
     echo "[*] Preparing Clean Environment..."
     
-    # 1. Bersihkan sisa device SEBELUMNYA (jika ada)
+    # 1. Clean leftovers from PREVIOUS device (if any)
     if [ ! -z "$LAST_DEVICE" ] && [ -d "out/target/product/${LAST_DEVICE}" ]; then
         echo "    -> Removing artifacts from previous device (${LAST_DEVICE})..."
         rm -rf "out/target/product/${LAST_DEVICE}"
@@ -59,7 +59,7 @@ if [ "$DIRTY_BUILD" != "true" ]; then
         fi
     fi
 
-    # 2. Reset Local Manifests (Untuk device baru)
+    # 2. Reset Local Manifests (For new device)
     echo "    -> Wiping local manifests..."
     rm -rf .repo/local_manifests
 else
@@ -70,7 +70,7 @@ echo "[*] Initializing Repo for $ROM_NAME ($ROM_VERSION)..."
 repo init -u $MANIFEST_URL -b $ROM_VERSION --depth=1 --git-lfs
 
 echo "[*] Handling Local Manifests..."
-# Pastikan folder ada
+# Ensure directory exists
 mkdir -p .repo/local_manifests
 
 # If a Local Manifest URL is provided via Jenkins, download it
