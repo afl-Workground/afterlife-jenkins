@@ -150,6 +150,7 @@ jobs:
           IS_ADMIN: ${{ needs.check-limit.outputs.is_admin }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_TOPIC_ID: ${{ secrets.TELEGRAM_TOPIC_ID }}
         run: |
           echo ">>> Starting Build for ${{ inputs.DEVICE }}..."
           echo "Admin Status: $IS_ADMIN"
@@ -161,6 +162,7 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_TOPIC_ID: ${{ secrets.TELEGRAM_TOPIC_ID }}
         run: |
           echo ">>> Uploading to external storage..."
           bash builder/smart_upload.sh ${{ inputs.DEVICE }}

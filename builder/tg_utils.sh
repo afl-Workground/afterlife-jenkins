@@ -18,9 +18,16 @@ function tg_send_message() {
     # DEBUG: Check env vars (Masked)
     echo "DEBUG: Sending msg to ChatID: ${chat_id:0:5}*** using Token: ${TELEGRAM_TOKEN:0:5}***" >&2
     
+    # Prepare Topic/Thread ID if available
+    local thread_arg=""
+    if [[ ! -z "$TELEGRAM_TOPIC_ID" ]]; then
+        thread_arg="-d message_thread_id=${TELEGRAM_TOPIC_ID}"
+    fi
+
     # Send message
     local response=$(curl -s -X POST "${TG_API}/sendMessage" \
         -d chat_id="${chat_id}" \
+        ${thread_arg} \
         -d text="${text}" \
         -d parse_mode="${parse_mode}" \
         -d disable_web_page_preview="true")
@@ -65,8 +72,15 @@ function tg_upload_log() {
         return
     fi
     
+    # Prepare Topic/Thread ID if available
+    local thread_arg=""
+    if [[ ! -z "$TELEGRAM_TOPIC_ID" ]]; then
+        thread_arg="-F message_thread_id=${TELEGRAM_TOPIC_ID}"
+    fi
+
     curl -s --progress-bar -F document=@"${file_path}" "${TG_API}/sendDocument" \
         -F chat_id="${chat_id}" \
+        ${thread_arg} \
         -F caption="${caption}" \
         -F parse_mode="Markdown" \
         -F disable_web_page_preview="true"
