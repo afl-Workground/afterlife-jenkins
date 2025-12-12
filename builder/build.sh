@@ -111,6 +111,7 @@ START_MSG="🚀 *AfterlifeOS Build Started!*
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\` | *Variant:* \`${BUILD_VARIANT}\`
 *Host:* \`$(hostname)\`
+*Build by:* \`${GITHUB_ACTOR:-Unknown}\`
 *Date:* ${BUILD_START_TIME_READABLE}
 
 [View Action Log](${JOB_URL})"
@@ -129,11 +130,11 @@ function handle_cancel() {
     local H=$(($DIFF / 3600))
     local M=$((($DIFF % 3600) / 60))
     
-                    local CANCEL_MSG="🚫 *AfterlifeOS Build Cancelled!*
+    local CANCEL_MSG="🚫 *AfterlifeOS Build Cancelled!*
             *Device:* \`${DEVICE}\`
             *Type:* \`${BUILD_TYPE}\`
-            *Duration:* ${H}h ${M}m
-            
+            *Build by:* \`${GITHUB_ACTOR:-Unknown}\`
+            *Duration:* ${H}h ${M}m            
             [View Action Log](${JOB_URL})"    tg_edit_message "$MSG_ID" "$CANCEL_MSG"
     
     # Kill monitor and exit
@@ -177,6 +178,7 @@ fi
             NEW_TEXT="⚙️ *AfterlifeOS Build in Progress...*
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\`
+*Build by:* \`${GITHUB_ACTOR:-Unknown}\`
 *Build Progress:* \`${CURRENT_PROGRESS}\`
 
 [View Realtime Log](${JOB_URL})"
@@ -249,6 +251,7 @@ if [ $BUILD_STATUS -eq 0 ] && [ ! -z "$ZIP_FILE_CHECK" ] && [ -f "$ZIP_FILE_CHEC
     SUCCESS_MSG="✅ *AfterlifeOS Build SUCCESS!*
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\` | *Variant:* \`${BUILD_VARIANT}\`
+*Build by:* \`${GITHUB_ACTOR:-Unknown}\`
 *Size:* \`${FILE_SIZE}\`
 *MD5:* \`${MD5SUM}\`
 *Duration:* ${HOURS}h ${MINUTES}m
@@ -265,6 +268,7 @@ else
     FAILURE_MSG="❌ *AfterlifeOS Build FAILED!*
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\`
+*Build by:* \`${GITHUB_ACTOR:-Unknown}\`
 *Duration:* ${HOURS}h ${MINUTES}m
 
 *Check the attached log for details:*
