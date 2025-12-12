@@ -60,21 +60,27 @@ source "$LOCALDIR/tg_utils.sh"
 # --- HELPER FUNCTIONS (From Reference) ---
 
 function fetch_progress() {
-    # Extracts the last Ninja progress line (e.g., [ 45% 1000/2000] or [ 77% 100/200 1m remaining]) from the log
-    # We strip ANSI color codes with sed to ensure regex matches correctly
-    # Regex updated to capture everything inside brackets starting with percentage
-    local PROGRESS=$(
-        tail -n 50 "$LOG_FILE" |
-        sed 's/\x1b\[[0-9;]*m//g' |
-        grep -Po '\[\s*\d+%[^]]*\]' |
-        tail -n 1
-    )
+    # 1. Get raw log tail (clean ANSI codes)
+    local RAW_LOG=$(tail -n 20 "$LOG_FILE" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g')
 
-    if [ -z "$PROGRESS" ]; then
-        echo "Initializing..."
-    else
-        echo "$PROGRESS"
+    # 2. Check for Ninja Progress (Compilation Phase) - Priority 1
+    # Matches: [ 10% ... ]
+    local NINJA_PROGRESS=$(echo "$RAW_LOG" | grep -Po '\[\s*\d+%[^]]*\]' | tail -n 1)
+
+    if [ ! -z "$NINJA_PROGRESS" ]; then
+        echo "$NINJA_PROGRESS"
+        return
     fi
+
+    # 3. Check for Config/Analysis Phase (Soong/Kati/Make) - Priority 2
+    # Keywords: including, finishing, writing, soong, kati, Analysing, Android.bp
+    if echo "$RAW_LOG" | grep -qE "including |finishing legacy|writing legacy|soong|kati|Analysing|Android.bp|bootstrap|glob"; then
+        echo "Initializing Build System (Soong/Kati)..."
+        return
+    fi
+
+    # 4. Default / Fallback
+    echo "Preparing..."
 }
 
 # --- TELEGRAM START NOTIFICATION ---
