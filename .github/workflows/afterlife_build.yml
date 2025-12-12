@@ -171,6 +171,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_TOPIC_ID: ${{ secrets.TELEGRAM_TOPIC_ID }}
           BUILD_TYPE: ${{ inputs.BUILD_TYPE }}
+          BUILD_VARIANT: ${{ inputs.BUILD_VARIANT }}
         run: |
           echo ">>> Uploading to external storage..."
           bash builder/smart_upload.sh ${{ inputs.DEVICE }}

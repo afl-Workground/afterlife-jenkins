@@ -243,25 +243,41 @@ if [ $BUILD_STATUS -eq 0 ] && [ ! -z "$ZIP_FILE_CHECK" ] && [ -f "$ZIP_FILE_CHEC
     
     # Get File Info for Message
     ZIP_FILE=$(ls "$DEST_OUT"/AfterlifeOS*.zip | head -n 1)
+    FILE_SIZE_BYTES=0
     if [ -f "$ZIP_FILE" ]; then
         FILE_SIZE=$(ls -sh "$ZIP_FILE" | awk '{print $1}')
         MD5SUM=$(md5sum "$ZIP_FILE" | awk '{print $1}')
+        FILE_SIZE_BYTES=$(stat -c%s "$ZIP_FILE")
     else
         FILE_SIZE="Unknown"
         MD5SUM="Unknown"
     fi
 
-    SUCCESS_MSG="✅ *AfterlifeOS Build SUCCESS!*
+    # LIMIT: 1.9GB (GitHub limit is ~2GB, strictly 2147483648 bytes)
+    # We use a safe margin to decide whether to show the GitHub link or wait for Gofile.
+    LIMIT_BYTES=2000000000 
+
+    BASE_MSG="✅ *AfterlifeOS Build SUCCESS!*
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\`
 *Variant:* \`${BUILD_VARIANT}\`
 *Build by:* \`${GITHUB_ACTOR:-Unknown}\`
 *Size:* \`${FILE_SIZE}\`
 *MD5:* \`${MD5SUM}\`
-*Duration:* ${HOURS}h ${MINUTES}m
+*Duration:* ${HOURS}h ${MINUTES}m"
 
-📦 *Artifacts available:*
-[Download Page](${JOB_URL})"
+    if [ "$FILE_SIZE_BYTES" -gt "$LIMIT_BYTES" ]; then
+        # Case: Large File -> Uploading to Gofile (Next Step)
+        SUCCESS_MSG="${BASE_MSG}
+
+🚀 *Large artifact detected. Processing upload...*
+Please wait for the final download link."
+    else
+        # Case: Small File -> Standard GitHub Artifact
+        SUCCESS_MSG="${BASE_MSG}
+
+[View Artifacts (GitHub)](${JOB_URL})"
+    fi
 
     # Reply/Edit with Success
     tg_edit_message "$MSG_ID" "$SUCCESS_MSG"

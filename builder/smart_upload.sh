@@ -63,12 +63,21 @@ Uploading to Gofile server... This may take a while."
         echo "It has been uploaded to Gofile:" >> "$LINK_FILE"
         echo "$DOWNLOAD_LINK" >> "$LINK_FILE"
         
+        # Calculate additional info
+        MD5SUM=$(md5sum "$ZIP_PATH" | awk '{print $1}')
+        FILE_SIZE_HUMAN=$(ls -sh "$ZIP_PATH" | awk '{print $1}')
+
         # Send Success Message
         SUCCESS_MSG="✅ *AfterlifeOS Gofile Upload Complete!*
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\`
-*File:* \`${FILE_NAME}\`
-*Link:* [Download Here](${DOWNLOAD_LINK})"
+*Variant:* \`${BUILD_VARIANT:-Unknown}\`
+*Build by:* \`${GITHUB_ACTOR:-Unknown}\`
+*Size:* \`${FILE_SIZE_HUMAN}\`
+*MD5:* \`${MD5SUM}\`
+
+[Download from Gofile](${DOWNLOAD_LINK})"
+
         tg_send_message "$SUCCESS_MSG"
         
         # REMOVE the original zip so GitHub Action doesn't fail trying to upload it
