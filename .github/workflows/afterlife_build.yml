@@ -19,11 +19,11 @@ on:
       BUILD_VARIANT:
         description: 'Build Variant'
         required: true
-        default: 'test'
+        default: 'Test'
         type: choice
         options:
-          - test
-          - release
+          - Test
+          - Release
       LOCAL_MANIFEST_URL:
         description: 'URL to Local Manifest XML'
         required: true

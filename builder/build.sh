@@ -109,7 +109,8 @@ JOB_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
 # HTML Formatted Start Message
 START_MSG="🚀 *AfterlifeOS Build Started!*
 *Device:* \`${DEVICE}\`
-*Type:* \`${BUILD_TYPE}\` | *Variant:* \`${BUILD_VARIANT}\`
+*Type:* \`${BUILD_TYPE}\`
+*Variant:* \`${BUILD_VARIANT}\`
 *Host:* \`$(hostname)\`
 *Build by:* \`${GITHUB_ACTOR:-Unknown}\`
 *Date:* ${BUILD_START_TIME_READABLE}
