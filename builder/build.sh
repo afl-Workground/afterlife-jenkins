@@ -132,16 +132,27 @@ function handle_cancel() {
     local M=$((($DIFF % 3600) / 60))
     
     local CANCEL_MSG="🚫 *AfterlifeOS Build Cancelled!*
-            *Device:* \`${DEVICE}\`
-            *Type:* \`${BUILD_TYPE}\`
-            *Build by:* \`${GITHUB_ACTOR:-Unknown}\`
-            *Duration:* ${H}h ${M}m            
-            [View Action Log](${JOB_URL})"    tg_edit_message "$MSG_ID" "$CANCEL_MSG"
+*Device:* \`${DEVICE}\`
+*Type:* \`${BUILD_TYPE}\`
+*Duration:* ${H}h ${M}m
+
+[View Action Log](${JOB_URL})"
     
-    # Kill monitor and exit
+    tg_edit_message "$MSG_ID" "$CANCEL_MSG"
+    
+    # Kill monitor
     if [ ! -z "$MONITOR_PID" ]; then
         kill $MONITOR_PID 2>/dev/null
     fi
+
+    # Kill actual build process
+    if [ ! -z "$BUILD_PID" ]; then
+        echo "Killing build process $BUILD_PID..."
+        kill $BUILD_PID 2>/dev/null
+        # Wait a bit to ensure it dies
+        wait $BUILD_PID 2>/dev/null
+    fi
+
     exit 130
 }
 
@@ -192,13 +203,31 @@ fi
 MONITOR_PID=$!
 
 # 2. Execute the Build (Piping to log and stdout)
-# set -o pipefail ensures that if the build fails, the exit code is preserved even after piping to tee
-# Technique: Tee to LOG_FILE, but also pipe (process substitution) to grep to create FILTERED_LOG
-# Note: We add 'sed' to strip ANSI color codes before grep, so the regex '^[' can match.
+# Technique: Run in background to allow TRAP to catch SIGTERM immediately
+# Refactored: Use explicit awk with fflush() to avoid 'Broken pipe' and dependency on stdbuf
 set -o pipefail
-$BUILD_CMD 2>&1 | tee "$LOG_FILE" >(sed -u 's/\x1b\[[0-9;]*m//g' | grep --line-buffered -P '^\[\s*[0-9]+% [0-9]+/[0-9]+' | sed -E 's/^\\[\\s]*([0-9]+)%\\s*([0-9]+\\/[0-9]+).*$/\\1,\\2/' | stdbuf -o0 awk -v logfile="${ROOTDIR}/monitoring_progress.log" '{ print $0 > logfile }')
+(
+    $BUILD_CMD 2>&1 | tee "$LOG_FILE" | \
+    grep --line-buffered -P '^\[\s*[0-9]+% [0-9]+/[0-9]+' | \
+    awk -v logfile="${ROOTDIR}/monitoring_progress.log" '{
+        # 1. Strip ANSI Colors (simple regex approach for standard build output)
+        gsub(/\x1b\[[0-9;]*m/, "");
+        
+        # 2. Extract Percentage and Counts
+        # Format input expected: "[ 12% 123/456] ..."
+        match($0, /([0-9]+)% ([0-9]+\/[0-9]+)/, arr);
+        
+        if (arr[1] != "" && arr[2] != "") {
+             print arr[1] "," arr[2] > logfile;
+             fflush(logfile);
+        }
+    }'
+) &
+BUILD_PID=$!
 
-# Capture Exit Code immediately
+# Wait for the build process to finish
+# 'wait' is interruptible by traps (unlike blocking commands)
+wait $BUILD_PID
 BUILD_STATUS=$?
 set +o pipefail
 
