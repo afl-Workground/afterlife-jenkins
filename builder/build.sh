@@ -22,37 +22,10 @@ if [ "$CLEAN_BUILD" = "true" ]; then
         make clean
     else
         echo "[!] PERMISSION DENIED: Full Clean ('make clean') is restricted to Admins/Owners."
-        echo "[*] Falling back to Surgical Clean (Device specific)..."
+        echo "[*] Skipping Full Wipe. Relying on 'sync.sh' for standard cleanup."
         CLEAN_BUILD="false" # Force false to trigger standard logic below
     fi
 fi
-
-# Surgical Cleanup Function (Mimics ros-builder's cleanup)
-surgical_clean() {
-    echo "[*] Executing Surgical Cleanup..."
-    
-    # 1. Clean output for THIS device only
-    if [ -d "out/target/product/${DEVICE}" ]; then
-        echo "    -> Removing device output: out/target/product/${DEVICE}"
-        rm -rf "out/target/product/${DEVICE}"
-    fi
-    
-    # 2. Clean 'install' artifacts (images) but keep compiled intermediates if possible
-    make installclean
-    
-    # 3. Clean tracked repositories from sync.sh (The "ros-builder" explicit cleanup style)
-    TRACK_FILE="tracked_paths_${DEVICE}.txt"
-    if [ -f "$TRACK_FILE" ]; then
-        echo "    -> Cleaning up tracked source directories from $TRACK_FILE..."
-        while IFS= read -r path; do
-            if [ -d "$path" ]; then
-                echo "       Removing: $path"
-                rm -rf "$path"
-            fi
-        done < $TRACK_FILE
-        rm $TRACK_FILE
-    fi
-}
 
 # Import Telegram Utils
 source "$LOCALDIR/tg_utils.sh"
