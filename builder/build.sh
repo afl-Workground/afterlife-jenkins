@@ -171,7 +171,7 @@ echo "${DEVICE}" > "${ROOTDIR}/.last_build_device"
 echo "[*] State saved: Next build will check this device tag."
 
 # Define the build command based on variant
-if [ "$BUILD_VARIANT" = "release" ]; then
+if [ "$BUILD_VARIANT" = "Release" ]; then
     BUILD_CMD="goafterlife ${DEVICE} ${BUILD_TYPE} --release"
 else
     BUILD_CMD="goafterlife ${DEVICE} ${BUILD_TYPE}"
@@ -208,7 +208,7 @@ MONITOR_PID=$!
 set -o pipefail
 (
     $BUILD_CMD 2>&1 | tee "$LOG_FILE" | \
-    grep --line-buffered -P '^\[\s*[0-9]+% [0-9]+/[0-9]+' | \
+    tee >(grep --line-buffered -P '^\[\s*[0-9]+% [0-9]+/[0-9]+' | \
     awk -v logfile="${ROOTDIR}/monitoring_progress.log" '{
         # 1. Strip ANSI Colors (simple regex approach for standard build output)
         gsub(/\x1b\[[0-9;]*m/, "");
@@ -221,7 +221,7 @@ set -o pipefail
              print arr[1] "," arr[2] > logfile;
              fflush(logfile);
         }
-    }'
+    }')
 ) &
 BUILD_PID=$!
 
@@ -280,7 +280,8 @@ if [ $BUILD_STATUS -eq 0 ] && [ ! -z "$ZIP_FILE_CHECK" ] && [ -f "$ZIP_FILE_CHEC
 
     SUCCESS_MSG="✅ *AfterlifeOS Build SUCCESS!*
 *Device:* \`${DEVICE}\`
-*Type:* \`${BUILD_TYPE}\` | *Variant:* \`${BUILD_VARIANT}\`
+*Type:* \`${BUILD_TYPE}\`
+*Variant:* \`${BUILD_VARIANT}\`
 *Build by:* \`${GITHUB_ACTOR:-Unknown}\`
 *Size:* \`${FILE_SIZE}\`
 *MD5:* \`${MD5SUM}\`
