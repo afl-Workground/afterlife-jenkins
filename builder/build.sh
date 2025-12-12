@@ -60,30 +60,31 @@ source "$LOCALDIR/tg_utils.sh"
 # --- HELPER FUNCTIONS (From Reference) ---
 
 function fetch_progress() {
-    # 1. Get raw log tail (clean ANSI codes) and filter for lines starting with '[' (progress)
-    local RAW_LOG=$(tail -n 50 "$LOG_FILE" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -P '^\[' | tail -n 1)
+    # 1. Baca baris terakhir dari FILTERED_LOG yang sudah bersih
+    #    File ini dibuat real-time oleh proses build dengan filter grep
+    local RAW_LOG=$(tail -n 1 "$FILTERED_LOG" 2>/dev/null)
 
     if [ -z "$RAW_LOG" ]; then
         echo "Initializing..."
         return
     fi
 
-    # 2. Check for Kati/Soong keywords (Initialization Phase)
-    # If the progress line contains these, it's not the main compilation yet.
-    if echo "$RAW_LOG" | grep -qE "finishing|analyzing|analyzing|bootstrap|writing|including|kati|soong"; then
-        echo "Initializing Build System..."
+    # 2. Cek apakah ini fase Kati/Soong (Setup/Analyzing)
+    # Saring kata kunci: finishing, analyzing, bootstrap
+    if echo "$RAW_LOG" | grep -qE "finishing|analyzing|bootstrap"; then
+        echo "Initializing Build System (Kati/Soong)..."
         return
     fi
 
-    # 3. Parse Data for Ninja (Compilation Phase)
+    # 3. Jika lolos saringan di atas, ini adalah fase Ninja (Kompilasi)
     # Extract Percentage (digits before %)
     local PCT=$(echo "$RAW_LOG" | grep -oP '\d+(?=%)' | head -n1)
     # Extract Counts (digits/digits)
     local COUNTS=$(echo "$RAW_LOG" | grep -oP '\d+/\d+' | head -n1)
     
-    # Validation: If parsing fails, fallback to raw log (safety net)
+    # Validation: Safety net jika parsing gagal
     if [ -z "$PCT" ] || [ -z "$COUNTS" ]; then
-        echo "$RAW_LOG"
+        echo "Initializing..." # Default fallback jika format belum sesuai Ninja
         return
     fi
 
@@ -95,8 +96,8 @@ function fetch_progress() {
     for ((i=0; i<FILLED; i++)); do BAR="${BAR}█"; done
     for ((i=0; i<EMPTY; i++)); do BAR="${BAR}░"; done
 
-    # 5. Format Output
-    echo "Build Progress: [${BAR}] ${PCT}% (${COUNTS} actions)"
+    # 5. Format Output Bersih
+    echo "[${BAR}] ${PCT}% (${COUNTS})"
 }
 
 # --- TELEGRAM START NOTIFICATION ---
@@ -122,7 +123,8 @@ echo "Telegram Message ID: $MSG_ID"
 
 echo "[*] Running goafterlife for device ${DEVICE}..."
 LOG_FILE="${ROOTDIR}/build_progress.log" # Use absolute path in ROOTDIR
-rm -f "$LOG_FILE"
+FILTERED_LOG="${ROOTDIR}/progress_filtered.log" # File khusus untuk menampung log progress bersih
+rm -f "$LOG_FILE" "$FILTERED_LOG"
 
 # Define the build command based on variant
 if [ "$BUILD_VARIANT" = "release" ]; then
@@ -143,7 +145,7 @@ fi
         if [ "$CURRENT_PROGRESS" != "$previous_progress" ] && [ "$CURRENT_PROGRESS" != "Initializing..." ]; then
             NEW_TEXT="🚀 *AfterlifeOS Build in Progress...*
 *Device:* \`${DEVICE}\`
-*Current Status:* \`${CURRENT_PROGRESS}\`
+*Build Progress:* \`${CURRENT_PROGRESS}\`
 *Job:* [Click Here](${JOB_URL})"
             
             tg_edit_message "$MSG_ID" "$NEW_TEXT"
@@ -155,8 +157,10 @@ MONITOR_PID=$!
 
 # 2. Execute the Build (Piping to log and stdout)
 # set -o pipefail ensures that if the build fails, the exit code is preserved even after piping to tee
+# Teknik: Tee ke LOG_FILE, tapi juga pipe (process substitution) ke grep untuk membuat FILTERED_LOG
+# Note: Kita tambahkan 'sed' untuk membuang kode warna ANSI sebelum di-grep, agar regex '^[' bisa match.
 set -o pipefail
-$BUILD_CMD 2>&1 | tee "$LOG_FILE"
+$BUILD_CMD 2>&1 | tee "$LOG_FILE" >(sed -u 's/\x1b\[[0-9;]*m//g' | grep --line-buffered -P '^\[\s*[0-9]+% [0-9]+/[0-9]+' > "$FILTERED_LOG")
 
 # Capture Exit Code immediately
 BUILD_STATUS=$?
@@ -248,7 +252,7 @@ else
     exit 1
 fi
 
-rm -f "$LOG_FILE"
+rm -f "$LOG_FILE" "$FILTERED_LOG"
 
 # Final Cleanup (Success Case)
 surgical_clean
