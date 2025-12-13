@@ -38,7 +38,7 @@ on:
         type: boolean
         default: false
       DISABLE_FSGEN:
-        description: 'Disable FSGen (Temp remove build/soong/fsgen)'
+        description: 'Disable FSGen'
         required: false
         type: boolean
         default: false
@@ -197,12 +197,20 @@ jobs:
         if: inputs.DISABLE_FSGEN == true
         run: |
           source builder/config.sh
-          echo "Checking for FSGen at: $ROOTDIR/build/soong/fsgen"
-          if [ -d "$ROOTDIR/build/soong/fsgen" ]; then
-            echo "⚠️ Moving FSGen to Workspace backup..."
-            mv "$ROOTDIR/build/soong/fsgen" "$GITHUB_WORKSPACE/fsgen.bak"
+          TARGET_FILE="$ROOTDIR/build/soong/fsgen/Android.bp"
+          echo "Targeting: $TARGET_FILE"
+          
+          if [ -f "$TARGET_FILE" ]; then
+            echo "⚠️ Backing up and patching FSGen..."
+            cp "$TARGET_FILE" "$GITHUB_WORKSPACE/Android.bp.bak"
+            
+            # Inject 'enabled: false,' after the name definition
+            sed -i '/name: "soong_filesystem_creator",/a \    enabled: false,' "$TARGET_FILE"
+            
+            echo "✅ Patch applied:"
+            grep -A 2 "soong_filesystem_creator" "$TARGET_FILE"
           else
-            echo "No FSGen directory found to disable."
+            echo "Target file not found. Skipping patch."
           fi
 
       - name: Build ROM
@@ -227,12 +235,16 @@ jobs:
         if: always() && inputs.DISABLE_FSGEN == true
         run: |
           source builder/config.sh
-          if [ -d "$GITHUB_WORKSPACE/fsgen.bak" ]; then
-            echo "♻️ Restoring FSGen from Workspace backup..."
-            # Remove any partial regeneration
-            rm -rf "$ROOTDIR/build/soong/fsgen"
-            mv "$GITHUB_WORKSPACE/fsgen.bak" "$ROOTDIR/build/soong/fsgen"
+          TARGET_FILE="$ROOTDIR/build/soong/fsgen/Android.bp"
+          BACKUP_FILE="$GITHUB_WORKSPACE/Android.bp.bak"
+          
+          if [ -f "$BACKUP_FILE" ]; then
+            echo "♻️ Restoring original Android.bp..."
+            cp -f "$BACKUP_FILE" "$TARGET_FILE"
+            rm "$BACKUP_FILE"
             echo "✅ Restoration complete."
+          else
+            echo "No backup file found to restore."
           fi
 
       # This part was previously severely broken
