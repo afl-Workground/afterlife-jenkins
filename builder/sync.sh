@@ -45,15 +45,23 @@ if [ "$DIRTY_BUILD" != "true" ]; then
     echo "[*] Preparing Clean Environment..."
     
     # 1. Clean leftovers from PREVIOUS device (if any)
-    if [ ! -z "$LAST_DEVICE" ] && [ -d "out/target/product/${LAST_DEVICE}" ]; then
-        echo "    -> Removing artifacts from previous device (${LAST_DEVICE})..."
-        rm -rf "out/target/product/${LAST_DEVICE}"
-        
+    if [ ! -z "$LAST_DEVICE" ]; then
+        # A. Clean Output Artifacts
+        if [ -d "out/target/product/${LAST_DEVICE}" ]; then
+            echo "    -> Removing artifacts from previous device (${LAST_DEVICE})..."
+            rm -rf "out/target/product/${LAST_DEVICE}"
+        fi
+
+        # B. Clean Tracked Source Trees (Device/Kernel/Vendor)
+        # This is now independent of the output directory check
         OLD_TRACK_FILE="tracked_paths_${LAST_DEVICE}.txt"
         if [ -f "$OLD_TRACK_FILE" ]; then
-            echo "    -> Removing tracked paths from previous build..."
+            echo "    -> Removing tracked paths from previous build (${LAST_DEVICE})..."
             while IFS= read -r path; do
-                [ -d "$path" ] && rm -rf "$path"
+                if [ -d "$path" ]; then
+                    echo "       Creating cleanup for: $path"
+                    rm -rf "$path"
+                fi
             done < $OLD_TRACK_FILE
             rm "$OLD_TRACK_FILE"
         fi
