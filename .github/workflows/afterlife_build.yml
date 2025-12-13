@@ -184,6 +184,7 @@ jobs:
           DEVICE: ${{ inputs.DEVICE }}
           DIRTY_BUILD: ${{ inputs.DIRTY_BUILD }}
         run: |
+          echo "CURRENT_STAGE=Syncing Source" >> $GITHUB_ENV
           echo ">>> Starting Sync on VPS..."
           bash builder/sync.sh
 
@@ -199,6 +200,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_TOPIC_ID: ${{ secrets.TELEGRAM_TOPIC_ID }}
         run: |
+          echo "CURRENT_STAGE=Building ROM" >> $GITHUB_ENV
           echo ">>> Starting Build for ${{ inputs.DEVICE }}..."
           echo "Admin Status: $IS_ADMIN"
           bash builder/build.sh
@@ -213,6 +215,7 @@ jobs:
           BUILD_TYPE: ${{ inputs.BUILD_TYPE }}
           BUILD_VARIANT: ${{ inputs.BUILD_VARIANT }}
         run: |
+          echo "CURRENT_STAGE=Uploading Artifacts" >> $GITHUB_ENV
           echo ">>> Uploading to external storage..."
           bash builder/smart_upload.sh ${{ inputs.DEVICE }}
 
@@ -228,3 +231,19 @@ jobs:
           # Only upload small files/info to GitHub Artifacts to save storage
           path: |
             source/out/target/product/${{ inputs.DEVICE }}/AfterlifeOS*.zip
+
+      - name: Notify Workflow Cancellation
+        if: cancelled()
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_TOPIC_ID: ${{ secrets.TELEGRAM_TOPIC_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d message_thread_id="${TELEGRAM_TOPIC_ID}" \
+            -d parse_mode="Markdown" \
+            -d text="⚠️ *Workflow Cancelled*
+            *Device:* \`${{ inputs.DEVICE }}\`
+            *User:* \`${{ github.actor }}\`
+            *Stage:* ${{ env.CURRENT_STAGE || 'Initialization' }}" || true
