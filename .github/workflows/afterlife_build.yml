@@ -86,7 +86,7 @@ jobs:
             LIMIT=-1 # Unlimited
           else
             IS_ADMIN="false"
-            LIMIT=3  # Daily Limit for normal users
+            LIMIT=5  # Daily Limit for normal users
           fi
           
           echo "is_admin=$IS_ADMIN" >> $GITHUB_OUTPUT
