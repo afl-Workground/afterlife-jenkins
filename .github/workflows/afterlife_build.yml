@@ -73,6 +73,10 @@ jobs:
         id: check_role
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_TOPIC_ID: ${{ secrets.TELEGRAM_TOPIC_ID }}
+          DEVICE: ${{ inputs.DEVICE }}
         run: |
           # --- 1. IDENTIFY USER ROLE ---
           ACTOR=${{ github.actor }}
@@ -107,12 +111,48 @@ jobs:
 
           if [[ $LIMIT -ne -1 && "$TODAY_RUNS" -ge $LIMIT ]]; then
             echo "::error::User $ACTOR has reached the daily limit of $LIMIT builds."
+
+            # Calculate time until reset (00:00 UTC)
+            NEXT_RESET=$(date -d "tomorrow 00:00" +%s)
+            NOW=$(date +%s)
+            DIFF=$((NEXT_RESET - NOW))
+            HOURS_LEFT=$((DIFF / 3600))
+            MINS_LEFT=$(( (DIFF % 3600) / 60 ))
+
+            # Send Telegram Notification for Quota Limit
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d message_thread_id="${TELEGRAM_TOPIC_ID}" \
+            -d parse_mode="Markdown" \
+            -d text="🚫 *Build Request Rejected*
+            *User:* \`$ACTOR\`
+            *Reason:* Daily Limit Reached ($TODAY_RUNS/$LIMIT)
+            *Reset In:* ${HOURS_LEFT}h ${MINS_LEFT}m (00:00 UTC)" || true
+
             exit 1
           fi
 
           NEW_RUNS=$((TODAY_RUNS + 1))
           jq --arg user "$ACTOR" --arg date "$CURRENT_DATE" --argjson runs "$NEW_RUNS" \
             'if .[$user] then .[$user][$date] = $runs else .[$user] = {($date): $runs} end' "$COUNTER_FILE" > tmp.json && mv tmp.json "$COUNTER_FILE"
+
+          # --- NOTIFY SUCCESSFUL QUEUE ---
+          if [[ "$IS_ADMIN" == "true" ]]; then
+            QUOTA_INFO="Unlimited ♾️"
+          else
+            REMAINING=$((LIMIT - NEW_RUNS))
+            QUOTA_INFO="$NEW_RUNS / $LIMIT (Left: $REMAINING)"
+          fi
+
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d message_thread_id="${TELEGRAM_TOPIC_ID}" \
+            -d parse_mode="Markdown" \
+            -d text="✅ *Build Request Accepted*
+            *Device:* \`$DEVICE\`
+            *User:* \`$ACTOR\`
+            *Quota Usage:* $QUOTA_INFO" || true
+
 
       - name: Commit Counter Update
         run: |
