@@ -84,6 +84,7 @@ START_MSG="🚀 *AfterlifeOS Build Started!*
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\`
 *Variant:* \`${BUILD_VARIANT}\`
+*FSGen disabled:* \`${DISABLE_FSGEN:-false}\`
 *Host:* \`$(hostname)\`
 *Build by:* \`${GITHUB_ACTOR:-Unknown}\`
 *Date:* ${BUILD_START_TIME_READABLE}
@@ -107,6 +108,8 @@ function handle_cancel() {
     local CANCEL_MSG="🚫 *AfterlifeOS Build Cancelled!*
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\`
+*Variant:* \`${BUILD_VARIANT}\`
+*FSGen disabled:* \`${DISABLE_FSGEN:-false}\`
 *Duration:* ${H}h ${M}m
 
 [View Action Log](${JOB_URL})"
@@ -163,6 +166,8 @@ fi
             NEW_TEXT="⚙️ *AfterlifeOS Build in Progress...*
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\`
+*Variant:* \`${BUILD_VARIANT}\`
+*FSGen disabled:* \`${DISABLE_FSGEN:-false}\`
 *Build by:* \`${GITHUB_ACTOR:-Unknown}\`
 *Build Progress:* \`${CURRENT_PROGRESS}\`
 
@@ -261,6 +266,7 @@ if [ $BUILD_STATUS -eq 0 ] && [ ! -z "$ZIP_FILE_CHECK" ] && [ -f "$ZIP_FILE_CHEC
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\`
 *Variant:* \`${BUILD_VARIANT}\`
+*FSGen disabled:* \`${DISABLE_FSGEN:-false}\`
 *Build by:* \`${GITHUB_ACTOR:-Unknown}\`
 *Size:* \`${FILE_SIZE}\`
 *MD5:* \`${MD5SUM}\`
@@ -288,6 +294,8 @@ else
     FAILURE_MSG="❌ *AfterlifeOS Build FAILED!*
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\`
+*Variant:* \`${BUILD_VARIANT}\`
+*FSGen disabled:* \`${DISABLE_FSGEN:-false}\`
 *Build by:* \`${GITHUB_ACTOR:-Unknown}\`
 *Duration:* ${HOURS}h ${MINUTES}m
 

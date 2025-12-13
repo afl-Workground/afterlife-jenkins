@@ -37,6 +37,11 @@ on:
         required: false
         type: boolean
         default: false
+      DISABLE_FSGEN:
+        description: 'Disable FSGen (Temp remove build/soong/fsgen)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -188,12 +193,25 @@ jobs:
           echo ">>> Starting Sync on VPS..."
           bash builder/sync.sh
 
+      - name: Disable FSGen (Pre-Build)
+        if: inputs.DISABLE_FSGEN == true
+        run: |
+          source builder/config.sh
+          echo "Checking for FSGen at: $ROOTDIR/build/soong/fsgen"
+          if [ -d "$ROOTDIR/build/soong/fsgen" ]; then
+            echo "⚠️ Moving FSGen to Workspace backup..."
+            mv "$ROOTDIR/build/soong/fsgen" "$GITHUB_WORKSPACE/fsgen.bak"
+          else
+            echo "No FSGen directory found to disable."
+          fi
+
       - name: Build ROM
         env:
           DEVICE: ${{ inputs.DEVICE }}
           BUILD_TYPE: ${{ inputs.BUILD_TYPE }}
           CLEAN_BUILD: ${{ inputs.CLEAN_BUILD }}
           DIRTY_BUILD: ${{ inputs.DIRTY_BUILD }}
+          DISABLE_FSGEN: ${{ inputs.DISABLE_FSGEN }}
           BUILD_VARIANT: ${{ inputs.BUILD_VARIANT }}
           IS_ADMIN: ${{ needs.check-limit.outputs.is_admin }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
@@ -204,6 +222,18 @@ jobs:
           echo ">>> Starting Build for ${{ inputs.DEVICE }}..."
           echo "Admin Status: $IS_ADMIN"
           bash builder/build.sh
+
+      - name: Restore FSGen (Post-Build)
+        if: always() && inputs.DISABLE_FSGEN == true
+        run: |
+          source builder/config.sh
+          if [ -d "$GITHUB_WORKSPACE/fsgen.bak" ]; then
+            echo "♻️ Restoring FSGen from Workspace backup..."
+            # Remove any partial regeneration
+            rm -rf "$ROOTDIR/build/soong/fsgen"
+            mv "$GITHUB_WORKSPACE/fsgen.bak" "$ROOTDIR/build/soong/fsgen"
+            echo "✅ Restoration complete."
+          fi
 
       # This part was previously severely broken
       - name: Handle Large Artifacts (Telegram/PixelDrain)
