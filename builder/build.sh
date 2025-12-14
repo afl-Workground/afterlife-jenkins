@@ -30,6 +30,13 @@ fi
 # Import Telegram Utils
 source "$LOCALDIR/tg_utils.sh"
 
+# --- DETERMINE BUILD USER ---
+if [ -n "$REQUESTER" ]; then
+    BUILD_USER="$REQUESTER"
+else
+    BUILD_USER="${GITHUB_ACTOR:-Unknown}"
+fi
+
 # --- HELPER FUNCTIONS (From Reference) ---
 
 function fetch_progress() {
@@ -86,7 +93,7 @@ START_MSG="🚀 *AfterlifeOS Build Started!*
 *Variant:* \`${BUILD_VARIANT}\`
 *FSGen disabled:* \`${DISABLE_FSGEN:-false}\`
 *Host:* \`$(hostname)\`
-*Build by:* \`${GITHUB_ACTOR:-Unknown}\`
+*Build by:* \`${BUILD_USER}\`
 *Date:* ${BUILD_START_TIME_READABLE}
 
 [View Action Log](${JOB_URL})"
@@ -168,7 +175,7 @@ fi
 *Type:* \`${BUILD_TYPE}\`
 *Variant:* \`${BUILD_VARIANT}\`
 *FSGen disabled:* \`${DISABLE_FSGEN:-false}\`
-*Build by:* \`${GITHUB_ACTOR:-Unknown}\`
+*Build by:* \`${BUILD_USER}\`
 *Build Progress:* \`${CURRENT_PROGRESS}\`
 
 [View Realtime Log](${JOB_URL})"
@@ -267,7 +274,7 @@ if [ $BUILD_STATUS -eq 0 ] && [ ! -z "$ZIP_FILE_CHECK" ] && [ -f "$ZIP_FILE_CHEC
 *Type:* \`${BUILD_TYPE}\`
 *Variant:* \`${BUILD_VARIANT}\`
 *FSGen disabled:* \`${DISABLE_FSGEN:-false}\`
-*Build by:* \`${GITHUB_ACTOR:-Unknown}\`
+*Build by:* \`${BUILD_USER}\`
 *Size:* \`${FILE_SIZE}\`
 *MD5:* \`${MD5SUM}\`
 *Duration:* ${HOURS}h ${MINUTES}m"
@@ -296,7 +303,7 @@ else
 *Type:* \`${BUILD_TYPE}\`
 *Variant:* \`${BUILD_VARIANT}\`
 *FSGen disabled:* \`${DISABLE_FSGEN:-false}\`
-*Build by:* \`${GITHUB_ACTOR:-Unknown}\`
+*Build by:* \`${BUILD_USER}\`
 *Duration:* ${HOURS}h ${MINUTES}m
 
 *Check the attached log for details:*
