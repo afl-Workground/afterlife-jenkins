@@ -265,9 +265,8 @@ if [ $BUILD_STATUS -eq 0 ] && [ ! -z "$ZIP_FILE_CHECK" ] && [ -f "$ZIP_FILE_CHEC
         MD5SUM="Unknown"
     fi
 
-    # LIMIT: 1.9GB (GitHub limit is ~2GB, strictly 2147483648 bytes)
-    # We use a safe margin to decide whether to show the GitHub link or wait for Gofile.
-    LIMIT_BYTES=2000000000 
+    # LIMIT: 0 (Force external upload for everything due to GitHub Quota)
+    LIMIT_BYTES=0 
 
     BASE_MSG="✅ *AfterlifeOS Build SUCCESS!*
 *Device:* \`${DEVICE}\`
@@ -280,13 +279,13 @@ if [ $BUILD_STATUS -eq 0 ] && [ ! -z "$ZIP_FILE_CHECK" ] && [ -f "$ZIP_FILE_CHEC
 *Duration:* ${HOURS}h ${MINUTES}m"
 
     if [ "$FILE_SIZE_BYTES" -gt "$LIMIT_BYTES" ]; then
-        # Case: Large File -> Uploading to Gofile (Next Step)
+        # Standard Case: Processing upload via smart_upload.sh
         SUCCESS_MSG="${BASE_MSG}
 
-🚀 *Large artifact detected. Processing upload...*
+🚀 *Build Complete. Processing upload...*
 Please wait for the final download link."
     else
-        # Case: Small File -> Standard GitHub Artifact
+        # This block is theoretically unreachable with LIMIT=0
         SUCCESS_MSG="${BASE_MSG}
 
 [View Artifacts (GitHub)](${JOB_URL})"

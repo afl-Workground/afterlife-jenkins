@@ -273,14 +273,14 @@ jobs:
         if: success()
         run: echo "BUILD_DATE=$(date +'%Y%m%d')" >> $GITHUB_ENV
 
-      - name: Upload Artifact to GitHub
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: AfterlifeOS-${{ env.DEVICE }}-${{ env.BUILD_DATE }}-${{ env.BUILD_VARIANT }}
-          # Only upload small files/info to GitHub Artifacts to save storage
-          path: |
-            source/out/target/product/${{ env.DEVICE }}/AfterlifeOS*.zip
+      # - name: Upload Artifact to GitHub
+      #   if: success()
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: AfterlifeOS-${{ env.DEVICE }}-${{ env.BUILD_DATE }}-${{ env.BUILD_VARIANT }}
+      #     # Only upload small files/info to GitHub Artifacts to save storage
+      #     path: |
+      #       source/out/target/product/${{ env.DEVICE }}/AfterlifeOS*.zip
 
       - name: Notify Workflow Cancellation
         if: cancelled()

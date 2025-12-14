@@ -12,7 +12,7 @@ OUT_DIR="source/out/target/product/${DEVICE}"
 
 # Fix: Get the MOST RECENT zip file (handling multiple files case)
 ZIP_PATH=$(ls -t "$OUT_DIR"/AfterlifeOS*.zip 2>/dev/null | head -n 1)
-LIMIT_BYTES=$((2 * 1024 * 1024 * 1024)) # 2GB Limit
+LIMIT_BYTES=0 # Force Gofile upload (GitHub Storage Quota Full)
 
 if [ -z "$ZIP_PATH" ]; then
     echo "SmartUpload: No zip file found in $OUT_DIR. Skipping."
@@ -47,9 +47,9 @@ upload_to_gofile() {
 }
 
 if [ "$FILE_SIZE" -gt "$LIMIT_BYTES" ]; then
-    echo "⚠️ File exceeds 2GB GitHub limit. Switching to Gofile upload..."
+    echo "⚠️ Bypass GitHub Artifacts (Storage Full/Limit). Uploading to Gofile..."
     
-    tg_send_message "📦 *Artifact > 2GB Detected*
+    tg_send_message "📦 *Artifact Upload Started*
 Uploading to Gofile server... This may take a while."
 
     DOWNLOAD_LINK=$(upload_to_gofile "$ZIP_PATH")
@@ -59,8 +59,7 @@ Uploading to Gofile server... This may take a while."
         
         # Create a text file with the link
         LINK_FILE="$OUT_DIR/AfterlifeOS_Download_Link.txt"
-        echo "The build artifact was too large for GitHub (>2GB)." > "$LINK_FILE"
-        echo "It has been uploaded to Gofile:" >> "$LINK_FILE"
+        echo "Artifact uploaded to Gofile (GitHub Storage Full)." > "$LINK_FILE"
         echo "$DOWNLOAD_LINK" >> "$LINK_FILE"
         
         # Calculate additional info
@@ -88,7 +87,6 @@ Uploading to Gofile server... This may take a while."
         echo "❌ Gofile Upload Failed."
         tg_send_message "❌ *Gofile Upload Failed!* Please check logs."
         # Keep zip so manual intervention is possible
+        exit 1
     fi
-else
-    echo "✅ File is under 2GB. Keeping file for standard GitHub Artifact upload."
 fi
