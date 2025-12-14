@@ -298,6 +298,12 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_TOPIC_ID: ${{ secrets.TELEGRAM_TOPIC_ID }}
         run: |
+          # Avoid duplicate notification if build.sh failed (it handles its own)
+          if [[ "$CURRENT_STAGE" == "Building ROM" ]]; then
+            echo "⚠️ Failure occurred in Build ROM stage. Notification handled by build.sh. Skipping global alert."
+            exit 0
+          fi
+
           ACTOR="${{ env.REQUESTER }}"
           if [[ -z "$ACTOR" ]]; then ACTOR="${{ github.actor }}"; fi
 

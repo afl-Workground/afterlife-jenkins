@@ -77,6 +77,11 @@ pipeline {
         }
         failure {
             script {
+                if (env.STAGE_NAME == 'Build ROM') {
+                    echo "⚠️ Failure in 'Build ROM' stage. Notification handled by build.sh. Skipping global alert."
+                    return
+                }
+
                 echo "Sending Telegram notification for FAILED build..."
                 
                 def errorLogContent = ""
