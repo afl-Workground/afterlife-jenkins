@@ -100,6 +100,7 @@ pipeline {
                     *Build Number:* ${env.BUILD_NUMBER}
                     *Device:* `${params.DEVICE}`
                     *Build Type:* `${params.BUILD_TYPE}`
+                    *Build Variant:* `${params.BUILD_VARIANT}`
                     *Reason:* ${currentBuild.result} in stage '${env.STAGE_NAME}'
                     *Build Link:* ${env.BUILD_URL}
                     ""
@@ -129,6 +130,7 @@ pipeline {
                     *Build Number:* ${env.BUILD_NUMBER}
                     *Device:* `${params.DEVICE}`
                     *Build Type:* `${params.BUILD_TYPE}`
+                    *Build Variant:* `${params.BUILD_VARIANT}`
                     *Build Link:* ${env.BUILD_URL}
                     """
                 // Using telegramSend plugin for successful text notification
