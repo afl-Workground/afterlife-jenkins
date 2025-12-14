@@ -92,6 +92,8 @@ START_MSG="🚀 *AfterlifeOS Build Started!*
 *Type:* \`${BUILD_TYPE}\`
 *Variant:* \`${BUILD_VARIANT}\`
 *FSGen disabled:* \`${DISABLE_FSGEN:-false}\`
+*Dirty:* \`${DIRTY_BUILD}\`
+*Clean:* \`${CLEAN_BUILD}\`
 *Host:* \`$(hostname)\`
 *Build by:* \`${BUILD_USER}\`
 *Date:* ${BUILD_START_TIME_READABLE}
@@ -117,6 +119,8 @@ function handle_cancel() {
 *Type:* \`${BUILD_TYPE}\`
 *Variant:* \`${BUILD_VARIANT}\`
 *FSGen disabled:* \`${DISABLE_FSGEN:-false}\`
+*Dirty:* \`${DIRTY_BUILD}\`
+*Clean:* \`${CLEAN_BUILD}\`
 *Duration:* ${H}h ${M}m
 
 [View Action Log](${JOB_URL})"
@@ -175,6 +179,8 @@ fi
 *Type:* \`${BUILD_TYPE}\`
 *Variant:* \`${BUILD_VARIANT}\`
 *FSGen disabled:* \`${DISABLE_FSGEN:-false}\`
+*Dirty:* \`${DIRTY_BUILD}\`
+*Clean:* \`${CLEAN_BUILD}\`
 *Build by:* \`${BUILD_USER}\`
 *Build Progress:* \`${CURRENT_PROGRESS}\`
 
@@ -273,6 +279,8 @@ if [ $BUILD_STATUS -eq 0 ] && [ ! -z "$ZIP_FILE_CHECK" ] && [ -f "$ZIP_FILE_CHEC
 *Type:* \`${BUILD_TYPE}\`
 *Variant:* \`${BUILD_VARIANT}\`
 *FSGen disabled:* \`${DISABLE_FSGEN:-false}\`
+*Dirty:* \`${DIRTY_BUILD}\`
+*Clean:* \`${CLEAN_BUILD}\`
 *Build by:* \`${BUILD_USER}\`
 *Size:* \`${FILE_SIZE}\`
 *MD5:* \`${MD5SUM}\`
@@ -302,6 +310,8 @@ else
 *Type:* \`${BUILD_TYPE}\`
 *Variant:* \`${BUILD_VARIANT}\`
 *FSGen disabled:* \`${DISABLE_FSGEN:-false}\`
+*Dirty:* \`${DIRTY_BUILD}\`
+*Clean:* \`${CLEAN_BUILD}\`
 *Build by:* \`${BUILD_USER}\`
 *Duration:* ${HOURS}h ${MINUTES}m
 

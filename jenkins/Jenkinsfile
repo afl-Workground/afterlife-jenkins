@@ -101,6 +101,8 @@ pipeline {
                     *Device:* `${params.DEVICE}`
                     *Build Type:* `${params.BUILD_TYPE}`
                     *Build Variant:* `${params.BUILD_VARIANT}`
+                    *Dirty:* `${params.DIRTY_BUILD}`
+                    *Clean:* `${params.CLEAN_BUILD}`
                     *Reason:* ${currentBuild.result} in stage '${env.STAGE_NAME}'
                     *Build Link:* ${env.BUILD_URL}
                     ""
@@ -131,6 +133,8 @@ pipeline {
                     *Device:* `${params.DEVICE}`
                     *Build Type:* `${params.BUILD_TYPE}`
                     *Build Variant:* `${params.BUILD_VARIANT}`
+                    *Dirty:* `${params.DIRTY_BUILD}`
+                    *Clean:* `${params.CLEAN_BUILD}`
                     *Build Link:* ${env.BUILD_URL}
                     """
                 // Using telegramSend plugin for successful text notification

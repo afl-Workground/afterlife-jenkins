@@ -153,6 +153,8 @@ jobs:
             *Device:* \`$DEVICE\`
             *Type:* \`$BUILD_TYPE\`
             *Variant:* \`$BUILD_VARIANT\`
+            *Dirty:* \`$DIRTY_BUILD\`
+            *Clean:* \`$CLEAN_BUILD\`
             *User:* \`$ACTOR\`
             *Reason:* Daily Limit Reached ($TODAY_RUNS/$LIMIT)
             *Reset In:* ${HOURS_LEFT}h ${MINS_LEFT}m (00:00 UTC)" || true
@@ -180,6 +182,8 @@ jobs:
             *Device:* \`$DEVICE\`
             *Type:* \`$BUILD_TYPE\`
             *Variant:* \`$BUILD_VARIANT\`
+            *Dirty:* \`$DIRTY_BUILD\`
+            *Clean:* \`$CLEAN_BUILD\`
             *User:* \`$ACTOR\`
             *Quota Usage:* $QUOTA_INFO" || true
 
@@ -305,6 +309,8 @@ jobs:
             *Device:* \`${{ env.DEVICE }}\`
             *Type:* \`${{ env.BUILD_TYPE }}\`
             *Variant:* \`${{ env.BUILD_VARIANT }}\`
+            *Dirty:* \`${{ env.DIRTY_BUILD }}\`
+            *Clean:* \`${{ env.CLEAN_BUILD }}\`
             *User:* \`$ACTOR\`
             *Stage:* ${{ env.CURRENT_STAGE || 'Initialization/Setup' }}
             *Link:* [View Action Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" || true
@@ -327,5 +333,7 @@ jobs:
             *Device:* \`${{ env.DEVICE }}\`
             *Type:* \`${{ env.BUILD_TYPE }}\`
             *Variant:* \`${{ env.BUILD_VARIANT }}\`
+            *Dirty:* \`${{ env.DIRTY_BUILD }}\`
+            *Clean:* \`${{ env.CLEAN_BUILD }}\`
             *User:* \`$ACTOR\`
             *Stage:* ${{ env.CURRENT_STAGE || 'Initialization' }}" || true
