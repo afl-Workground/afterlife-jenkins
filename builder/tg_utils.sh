@@ -31,9 +31,6 @@ function tg_send_message() {
         -d text="${text}" \
         -d parse_mode="${parse_mode}" \
         -d disable_web_page_preview="true")
-    
-    # DEBUG: Print Raw Response
-    echo "DEBUG: Telegram Response: $response" >&2
 
     # Debug: Print raw response if it's not OK
     if [[ "$response" != *"\"ok\":true"* ]]; then
