@@ -111,9 +111,11 @@ jobs:
           if [[ "$PERM" == "admin" ]]; then
             IS_ADMIN="true"
             LIMIT=-1 # Unlimited
+            echo "✅ Admin Access Detected. Unlimited Quota."
           else
             IS_ADMIN="false"
             LIMIT=5  # Daily Limit for normal users
+            echo "👤 Standard User Access ($PERM). Quota: $LIMIT/day."
           fi
           
           echo "is_admin=$IS_ADMIN" >> $GITHUB_OUTPUT
