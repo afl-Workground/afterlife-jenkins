@@ -185,7 +185,7 @@ jobs:
           git config --global user.name "GitHub Actions"
           git pull --rebase origin main || echo "No changes to pull"
           git add .github/workflow_counter.json
-          git commit -m "Update build quota for ${{ github.actor }}" || echo "Nothing to commit"
+          git commit -m "Update build quota for ${{ env.REQUESTER || github.actor }}" || echo "Nothing to commit"
           git push
 
   build-on-vps:
