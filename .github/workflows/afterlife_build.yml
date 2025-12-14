@@ -6,7 +6,6 @@ on:
       DEVICE:
         description: 'Device Codename (e.g., surya, raven)'
         required: true
-
       BUILD_TYPE:
         description: 'Build Type'
         required: true
@@ -42,10 +41,24 @@ on:
         required: false
         type: boolean
         default: false
+  
+  repository_dispatch:
+    types: [Telegram-Builder]
 
 permissions:
   contents: write
   actions: read
+
+# Global Environment Variables (Mapped from either Inputs or Client Payload)
+env:
+  DEVICE: ${{ inputs.DEVICE || github.event.client_payload.DEVICE }}
+  BUILD_TYPE: ${{ inputs.BUILD_TYPE || github.event.client_payload.BUILD_TYPE }}
+  BUILD_VARIANT: ${{ inputs.BUILD_VARIANT || github.event.client_payload.BUILD_VARIANT }}
+  LOCAL_MANIFEST_URL: ${{ inputs.LOCAL_MANIFEST_URL || github.event.client_payload.LOCAL_MANIFEST_URL }}
+  CLEAN_BUILD: ${{ inputs.CLEAN_BUILD || github.event.client_payload.CLEAN_BUILD }}
+  DIRTY_BUILD: ${{ inputs.DIRTY_BUILD || github.event.client_payload.DIRTY_BUILD }}
+  DISABLE_FSGEN: ${{ inputs.DISABLE_FSGEN || github.event.client_payload.DISABLE_FSGEN }}
+  REQUESTER: ${{ github.event.client_payload.REQUESTER }} # Only exists in API trigger
 
 jobs:
   check-limit:
@@ -81,11 +94,16 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_TOPIC_ID: ${{ secrets.TELEGRAM_TOPIC_ID }}
-          DEVICE: ${{ inputs.DEVICE }}
         run: |
           # --- 1. IDENTIFY USER ROLE ---
-          ACTOR=${{ github.actor }}
-          echo "Checking role for user: $ACTOR"
+          # Priority: Env REQUESTER (from Bot) > github.actor (Manual Web Trigger)
+          if [[ -n "$REQUESTER" ]]; then
+            ACTOR="$REQUESTER"
+            echo "🤖 Bot Trigger Detected. Acting on behalf of: $ACTOR"
+          else
+            ACTOR="${{ github.actor }}"
+            echo "👤 Manual Trigger Detected. User: $ACTOR"
+          fi
           
           PERM=$(gh api repos/${{ github.repository }}/collaborators/$ACTOR/permission --jq .permission)
           echo "User permission: $PERM"
@@ -104,7 +122,7 @@ jobs:
           CURRENT_DATE=$(date +%Y-%m-%d)
 
           if [[ ! -f "$COUNTER_FILE" ]] || ! jq empty "$COUNTER_FILE" 2>/dev/null; then
-            echo '{}' > "$COUNTER_FILE"
+            echo "{}" > "$COUNTER_FILE"
           fi
 
           TODAY_RUNS=$(jq -r --arg user "$ACTOR" --arg date "$CURRENT_DATE" \
@@ -169,7 +187,7 @@ jobs:
           git push
 
   build-on-vps:
-    name: 🏗️ Build ROM (${{ inputs.DEVICE }})
+    name: 🏗️ Build ROM (${{ inputs.DEVICE || github.event.client_payload.DEVICE }})
     needs: check-limit
     runs-on: self-hosted
     concurrency:
@@ -184,17 +202,13 @@ jobs:
         run: chmod +x builder/*.sh
 
       - name: Sync Source
-        env:
-          LOCAL_MANIFEST_URL: ${{ inputs.LOCAL_MANIFEST_URL }}
-          DEVICE: ${{ inputs.DEVICE }}
-          DIRTY_BUILD: ${{ inputs.DIRTY_BUILD }}
         run: |
           echo "CURRENT_STAGE=Syncing Source" >> $GITHUB_ENV
           echo ">>> Starting Sync on VPS..."
           bash builder/sync.sh
 
       - name: Disable FSGen (Pre-Build)
-        if: inputs.DISABLE_FSGEN == true
+        if: env.DISABLE_FSGEN == 'true'
         run: |
           source builder/config.sh
           TARGET_FILE="$ROOTDIR/build/soong/fsgen/Android.bp"
@@ -215,24 +229,18 @@ jobs:
 
       - name: Build ROM
         env:
-          DEVICE: ${{ inputs.DEVICE }}
-          BUILD_TYPE: ${{ inputs.BUILD_TYPE }}
-          CLEAN_BUILD: ${{ inputs.CLEAN_BUILD }}
-          DIRTY_BUILD: ${{ inputs.DIRTY_BUILD }}
-          DISABLE_FSGEN: ${{ inputs.DISABLE_FSGEN }}
-          BUILD_VARIANT: ${{ inputs.BUILD_VARIANT }}
           IS_ADMIN: ${{ needs.check-limit.outputs.is_admin }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_TOPIC_ID: ${{ secrets.TELEGRAM_TOPIC_ID }}
         run: |
           echo "CURRENT_STAGE=Building ROM" >> $GITHUB_ENV
-          echo ">>> Starting Build for ${{ inputs.DEVICE }}..."
+          echo ">>> Starting Build for ${{ env.DEVICE }}..."
           echo "Admin Status: $IS_ADMIN"
           bash builder/build.sh
 
       - name: Restore FSGen (Post-Build)
-        if: always() && inputs.DISABLE_FSGEN == true
+        if: always() && env.DISABLE_FSGEN == 'true'
         run: |
           source builder/config.sh
           TARGET_FILE="$ROOTDIR/build/soong/fsgen/Android.bp"
@@ -254,12 +262,10 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_TOPIC_ID: ${{ secrets.TELEGRAM_TOPIC_ID }}
-          BUILD_TYPE: ${{ inputs.BUILD_TYPE }}
-          BUILD_VARIANT: ${{ inputs.BUILD_VARIANT }}
         run: |
           echo "CURRENT_STAGE=Uploading Artifacts" >> $GITHUB_ENV
           echo ">>> Uploading to external storage..."
-          bash builder/smart_upload.sh ${{ inputs.DEVICE }}
+          bash builder/smart_upload.sh ${{ env.DEVICE }}
 
       - name: Set Build Date
         if: success()
@@ -269,10 +275,10 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: AfterlifeOS-${{ inputs.DEVICE }}-${{ env.BUILD_DATE }}-${{ inputs.BUILD_VARIANT }}
+          name: AfterlifeOS-${{ env.DEVICE }}-${{ env.BUILD_DATE }}-${{ env.BUILD_VARIANT }}
           # Only upload small files/info to GitHub Artifacts to save storage
           path: |
-            source/out/target/product/${{ inputs.DEVICE }}/AfterlifeOS*.zip
+            source/out/target/product/${{ env.DEVICE }}/AfterlifeOS*.zip
 
       - name: Notify Workflow Cancellation
         if: cancelled()
@@ -281,11 +287,14 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_TOPIC_ID: ${{ secrets.TELEGRAM_TOPIC_ID }}
         run: |
+          ACTOR="${{ env.REQUESTER }}"
+          if [[ -z "$ACTOR" ]]; then ACTOR="${{ github.actor }}"; fi
+
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
             -d message_thread_id="${TELEGRAM_TOPIC_ID}" \
             -d parse_mode="Markdown" \
             -d text="⚠️ *Workflow Cancelled*
-            *Device:* \`${{ inputs.DEVICE }}\`
-            *User:* \`${{ github.actor }}\`
+            *Device:* \`${{ env.DEVICE }}\`
+            *User:* \`$ACTOR\`
             *Stage:* ${{ env.CURRENT_STAGE || 'Initialization' }}" || true
