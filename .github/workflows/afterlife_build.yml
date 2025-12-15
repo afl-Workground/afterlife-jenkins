@@ -63,14 +63,16 @@ permissions:
 # Global Environment Variables
 env:
   DEVICE: ${{ inputs.DEVICE || github.event.client_payload.DEVICE }}
-  BUILD_TYPE: ${{ inputs.BUILD_TYPE || github.event.client_payload.BUILD_TYPE }}
-  BUILD_VARIANT: ${{ inputs.BUILD_VARIANT || github.event.client_payload.BUILD_VARIANT }}
-  GAPPS_VARIANT: ${{ inputs.GAPPS_VARIANT || github.event.client_payload.GAPPS_VARIANT }}
   LOCAL_MANIFEST_URL: ${{ inputs.LOCAL_MANIFEST_URL || github.event.client_payload.LOCAL_MANIFEST_URL }}
-  CLEAN_BUILD: ${{ inputs.CLEAN_BUILD || github.event.client_payload.CLEAN_BUILD }}
-  DIRTY_BUILD: ${{ inputs.DIRTY_BUILD || github.event.client_payload.DIRTY_BUILD }}
-  DISABLE_FSGEN: ${{ inputs.DISABLE_FSGEN || github.event.client_payload.DISABLE_FSGEN }}
   REQUESTER: ${{ github.event.client_payload.REQUESTER }}
+  # Grouped Build Config
+  BUILD_TYPE: ${{ inputs.BUILD_TYPE || github.event.client_payload.BUILD_CONFIG.BUILD_TYPE }}
+  BUILD_VARIANT: ${{ inputs.BUILD_VARIANT || github.event.client_payload.BUILD_CONFIG.BUILD_VARIANT }}
+  GAPPS_VARIANT: ${{ inputs.GAPPS_VARIANT || github.event.client_payload.BUILD_CONFIG.GAPPS_VARIANT }}
+  CLEAN_BUILD: ${{ inputs.CLEAN_BUILD || github.event.client_payload.BUILD_CONFIG.CLEAN_BUILD }}
+  DIRTY_BUILD: ${{ inputs.DIRTY_BUILD || github.event.client_payload.BUILD_CONFIG.DIRTY_BUILD }}
+  DISABLE_FSGEN: ${{ inputs.DISABLE_FSGEN || github.event.client_payload.BUILD_CONFIG.DISABLE_FSGEN }}
+  # Telegram Meta
   TG_MSG_ID: ${{ github.event.client_payload.TG_META.msg_id }}
   TG_USER_ID: ${{ github.event.client_payload.TG_META.id }}
 
