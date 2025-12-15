@@ -14,6 +14,13 @@ export CCACHE_DIR="$CCACHE_DIR"
 echo "[*] Setting up Environment..."
 source build/envsetup.sh
 
+# Determine FSGen Status String
+if [ "${DISABLE_FSGEN}" == "true" ]; then
+    FSGEN_STATUS="Disabled"
+else
+    FSGEN_STATUS="Enabled"
+fi
+
 # CLEAN_BUILD Logic
 # Enforce Admin restriction for full wipes
 if [ "$CLEAN_BUILD" = "true" ]; then
@@ -35,6 +42,13 @@ if [ -n "$REQUESTER" ]; then
     BUILD_USER="$REQUESTER"
 else
     BUILD_USER="${GITHUB_ACTOR:-Unknown}"
+fi
+
+# Define User Tag (with Telegram ID)
+if [ -n "$TG_USER_ID" ]; then
+    USER_TAG="[$BUILD_USER](tg://user?id=$TG_USER_ID)"
+else
+    USER_TAG="\`$BUILD_USER\`"
 fi
 
 # --- HELPER FUNCTIONS (From Reference) ---
@@ -91,18 +105,27 @@ START_MSG="🚀 *AfterlifeOS Build Started!*
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\`
 *Variant:* \`${BUILD_VARIANT}\`
-*FSGen disabled:* \`${DISABLE_FSGEN:-false}\`
+*FSGen:* \`${FSGEN_STATUS}\`
 *Dirty:* \`${DIRTY_BUILD}\`
 *Clean:* \`${CLEAN_BUILD}\`
 *Host:* \`$(hostname)\`
-*Build by:* \`${BUILD_USER}\`
+*Build by:* $USER_TAG
 *Date:* ${BUILD_START_TIME_READABLE}
 
 [View Action Log](${JOB_URL})"
 
-# Send initial message and save ID for editing
-MSG_ID=$(tg_send_message "$START_MSG")
-echo "Telegram Message ID: $MSG_ID"
+# Read MSG_ID from previous job
+MSG_ID=$(cat "${WORKSPACE}/.tg_msg_id" 2>/dev/null)
+
+if [ -n "$MSG_ID" ]; then
+    echo "Found existing Telegram Message ID: $MSG_ID"
+    tg_edit_message "$MSG_ID" "$START_MSG"
+else
+    echo "⚠️ Message ID not found. Sending new message."
+    MSG_ID=$(tg_send_message "$START_MSG")
+    # Save for smart_upload
+    echo "$MSG_ID" > "${WORKSPACE}/.tg_msg_id"
+fi
 
 # --- TRAP FOR CANCELLATION ---
 function handle_cancel() {
@@ -118,9 +141,10 @@ function handle_cancel() {
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\`
 *Variant:* \`${BUILD_VARIANT}\`
-*FSGen disabled:* \`${DISABLE_FSGEN:-false}\`
+*FSGen:* \`${FSGEN_STATUS}\`
 *Dirty:* \`${DIRTY_BUILD}\`
 *Clean:* \`${CLEAN_BUILD}\`
+*User:* $USER_TAG
 *Duration:* ${H}h ${M}m
 
 [View Action Log](${JOB_URL})"
@@ -178,10 +202,10 @@ fi
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\`
 *Variant:* \`${BUILD_VARIANT}\`
-*FSGen disabled:* \`${DISABLE_FSGEN:-false}\`
+*FSGen:* \`${FSGEN_STATUS}\`
 *Dirty:* \`${DIRTY_BUILD}\`
 *Clean:* \`${CLEAN_BUILD}\`
-*Build by:* \`${BUILD_USER}\`
+*Build by:* $USER_TAG
 *Build Progress:* \`${CURRENT_PROGRESS}\`
 
 [View Realtime Log](${JOB_URL})"
@@ -243,24 +267,8 @@ ZIP_FILE_CHECK=$(ls "$SRC_OUT"/AfterlifeOS*.zip 2>/dev/null | head -n 1)
 if [ $BUILD_STATUS -eq 0 ] && [ ! -z "$ZIP_FILE_CHECK" ] && [ -f "$ZIP_FILE_CHECK" ]; then
     echo "BUILD SUCCESS! Artifact found: $ZIP_FILE_CHECK"
     
-    # --- COPY ARTIFACTS TO WORKSPACE ---
-    # GitHub Actions/Jenkins can only upload artifacts from within their own workspace.
-    # Since we build in an external ROOTDIR, we must copy the results back.
-    
-    DEST_OUT="${WORKSPACE}/source/out/target/product/${DEVICE}"
-    
-    echo "[*] Copying artifacts to Workspace for Upload..."
-    mkdir -p "$DEST_OUT"
-    
-    # Copy ZIPs, JSONs, and checksums
-    cp -v "$SRC_OUT"/AfterlifeOS*.zip "$DEST_OUT/" 2>/dev/null || true
-    cp -v "$SRC_OUT"/*.json "$DEST_OUT/" 2>/dev/null || true
-    
-    echo "    -> Artifacts copied to: $DEST_OUT"
-    # -----------------------------------
-    
     # Get File Info for Message
-    ZIP_FILE=$(ls "$DEST_OUT"/AfterlifeOS*.zip | head -n 1)
+    ZIP_FILE=$(ls "$SRC_OUT"/AfterlifeOS*.zip | head -n 1)
     FILE_SIZE_BYTES=0
     if [ -f "$ZIP_FILE" ]; then
         FILE_SIZE=$(ls -sh "$ZIP_FILE" | awk '{print $1}')
@@ -271,33 +279,23 @@ if [ $BUILD_STATUS -eq 0 ] && [ ! -z "$ZIP_FILE_CHECK" ] && [ -f "$ZIP_FILE_CHEC
         MD5SUM="Unknown"
     fi
 
-    # LIMIT: 0 (Force external upload for everything due to GitHub Quota)
-    LIMIT_BYTES=0 
-
     BASE_MSG="✅ *AfterlifeOS Build SUCCESS!*
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\`
 *Variant:* \`${BUILD_VARIANT}\`
-*FSGen disabled:* \`${DISABLE_FSGEN:-false}\`
+*FSGen:* \`${FSGEN_STATUS}\`
 *Dirty:* \`${DIRTY_BUILD}\`
 *Clean:* \`${CLEAN_BUILD}\`
-*Build by:* \`${BUILD_USER}\`
+*Build by:* $USER_TAG
 *Size:* \`${FILE_SIZE}\`
 *MD5:* \`${MD5SUM}\`
 *Duration:* ${HOURS}h ${MINUTES}m"
 
-    if [ "$FILE_SIZE_BYTES" -gt "$LIMIT_BYTES" ]; then
-        # Standard Case: Processing upload via smart_upload.sh
-        SUCCESS_MSG="${BASE_MSG}
+    # Standard Case: Processing upload via smart_upload.sh
+    SUCCESS_MSG="${BASE_MSG}
 
 🚀 *Build Complete. Processing upload...*
 Please wait for the final download link."
-    else
-        # This block is theoretically unreachable with LIMIT=0
-        SUCCESS_MSG="${BASE_MSG}
-
-[View Artifacts (GitHub)](${JOB_URL})"
-    fi
 
     # Reply/Edit with Success
     tg_edit_message "$MSG_ID" "$SUCCESS_MSG"
@@ -309,10 +307,10 @@ else
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\`
 *Variant:* \`${BUILD_VARIANT}\`
-*FSGen disabled:* \`${DISABLE_FSGEN:-false}\`
+*FSGen:* \`${FSGEN_STATUS}\`
 *Dirty:* \`${DIRTY_BUILD}\`
 *Clean:* \`${CLEAN_BUILD}\`
-*Build by:* \`${BUILD_USER}\`
+*Build by:* $USER_TAG
 *Duration:* ${HOURS}h ${MINUTES}m
 
 *Check the attached log for details:*

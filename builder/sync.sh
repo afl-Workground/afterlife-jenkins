@@ -4,6 +4,10 @@
 LOCALDIR=`cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd`
 . $LOCALDIR/config.sh
 
+# Define a log file for sync operations
+SYNC_LOG_FILE="${ROOTDIR}/sync_failure.log"
+rm -f "$SYNC_LOG_FILE" # Clean up any previous log
+
 # Setup Repo tool if missing
 if ! command -v repo &> /dev/null
 then
@@ -84,10 +88,10 @@ mkdir -p .repo/local_manifests
 # If a Local Manifest URL is provided via Jenkins, download it
 if [ ! -z "$LOCAL_MANIFEST_URL" ]; then
     echo "[*] Downloading Local Manifest from: $LOCAL_MANIFEST_URL"
-    curl -L -o .repo/local_manifests/jenkins_local_manifest.xml "$LOCAL_MANIFEST_URL"
+    curl -L -o .repo/local_manifests/jenkins_local_manifest.xml "$LOCAL_MANIFEST_URL" 2>&1 | tee -a "$SYNC_LOG_FILE"
     
     if [ $? -ne 0 ]; then
-        echo "[!] Failed to download local manifest. Check the URL."
+        echo "[!] Failed to download local manifest. Check the URL." | tee -a "$SYNC_LOG_FILE"
         exit 1
     fi
 
@@ -112,4 +116,9 @@ echo "[*] Starting Sync..."
 # --prune : CRITICAL. Deletes project files that are no longer in the manifest.
 #           This removes Maintainer A's device tree when Maintainer B builds.
 # --force-sync : Overwrite changes if necessary.
-repo sync -c -j8 --force-sync --optimized-fetch --no-clone-bundle --no-tags --prune --retry-fetches=5
+repo sync -c -j8 --force-sync --optimized-fetch --no-clone_bundle --no-tags --prune --retry-fetches=5 2>&1 | tee -a "$SYNC_LOG_FILE"
+
+if [ $? -ne 0 ]; then
+    echo "[!] repo sync failed. Check log for details." | tee -a "$SYNC_LOG_FILE"
+    exit 1
+fi

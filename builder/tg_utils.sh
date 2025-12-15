@@ -51,12 +51,17 @@ function tg_edit_message() {
         return
     fi
     
-    curl -s -X POST "${TG_API}/editMessageText" \
+    local response=$(curl -s -X POST "${TG_API}/editMessageText" \
         -d chat_id="${chat_id}" \
         -d message_id="${msg_id}" \
         -d text="${text}" \
         -d parse_mode="${parse_mode}" \
-        -d disable_web_page_preview="true" > /dev/null
+        -d disable_web_page_preview="true")
+
+    # Debug: Print raw response if it's not OK
+    if [[ "$response" != *"\"ok\":true"* ]]; then
+        echo "❌ Telegram Edit Error: $response" >&2
+    fi
 }
 
 function tg_upload_log() {

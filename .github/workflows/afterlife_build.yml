@@ -49,7 +49,7 @@ permissions:
   contents: write
   actions: read
 
-# Global Environment Variables (Mapped from either Inputs or Client Payload)
+# Global Environment Variables
 env:
   DEVICE: ${{ inputs.DEVICE || github.event.client_payload.DEVICE }}
   BUILD_TYPE: ${{ inputs.BUILD_TYPE || github.event.client_payload.BUILD_TYPE }}
@@ -58,7 +58,9 @@ env:
   CLEAN_BUILD: ${{ inputs.CLEAN_BUILD || github.event.client_payload.CLEAN_BUILD }}
   DIRTY_BUILD: ${{ inputs.DIRTY_BUILD || github.event.client_payload.DIRTY_BUILD }}
   DISABLE_FSGEN: ${{ inputs.DISABLE_FSGEN || github.event.client_payload.DISABLE_FSGEN }}
-  REQUESTER: ${{ github.event.client_payload.REQUESTER }} # Only exists in API trigger
+  REQUESTER: ${{ github.event.client_payload.REQUESTER }}
+  TG_MSG_ID: ${{ github.event.client_payload.TG_MSG_ID }}
+  TG_USER_ID: ${{ github.event.client_payload.TG_USER_ID }}
 
 jobs:
   check-limit:
@@ -66,6 +68,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       is_admin: ${{ steps.check_role.outputs.is_admin }}
+      msg_id: ${{ env.TG_MSG_ID }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -95,8 +98,16 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_TOPIC_ID: ${{ secrets.TELEGRAM_TOPIC_ID }}
         run: |
+          # Determine FSGen Status String for notifications
+          FSGEN_STATUS=""
+          if [[ "${{ env.DISABLE_FSGEN }}" == "true" ]]; then
+              FSGEN_STATUS="Disabled"
+          else
+              FSGEN_STATUS="Enabled"
+          fi
+          echo "FSGEN_STATUS=$FSGEN_STATUS" >> $GITHUB_ENV
+
           # --- 1. IDENTIFY USER ROLE ---
-          # Priority: Env REQUESTER (from Bot) > github.actor (Manual Web Trigger)
           if [[ -n "$REQUESTER" ]]; then
             ACTOR="$REQUESTER"
             echo "🤖 Bot Trigger Detected. Acting on behalf of: $ACTOR"
@@ -137,27 +148,43 @@ jobs:
           if [[ $LIMIT -ne -1 && "$TODAY_RUNS" -ge $LIMIT ]]; then
             echo "::error::User $ACTOR has reached the daily limit of $LIMIT builds."
 
-            # Calculate time until reset (00:00 UTC)
             NEXT_RESET=$(date -d "tomorrow 00:00" +%s)
             NOW=$(date +%s)
             DIFF=$((NEXT_RESET - NOW))
             HOURS_LEFT=$((DIFF / 3600))
             MINS_LEFT=$(( (DIFF % 3600) / 60 ))
 
-            # Send Telegram Notification for Quota Limit
-            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_CHAT_ID}" \
-            -d message_thread_id="${TELEGRAM_TOPIC_ID}" \
-            -d parse_mode="Markdown" \
-            -d text="🚫 *Build Request Rejected*
+            if [[ -n "$TG_USER_ID" ]]; then
+                USER_TAG="[$ACTOR](tg://user?id=$TG_USER_ID)"
+            else
+                USER_TAG="\`$ACTOR\`"
+            fi
+
+            # --- REJECT MESSAGE ---
+            REJECT_TEXT="🚫 *Build Request Rejected*
             *Device:* \`$DEVICE\`
             *Type:* \`$BUILD_TYPE\`
             *Variant:* \`$BUILD_VARIANT\`
+            *FSGen:* \`$FSGEN_STATUS\`
             *Dirty:* \`$DIRTY_BUILD\`
             *Clean:* \`$CLEAN_BUILD\`
-            *User:* \`$ACTOR\`
+            *User:* $USER_TAG
             *Reason:* Daily Limit Reached ($TODAY_RUNS/$LIMIT)
-            *Reset In:* ${HOURS_LEFT}h ${MINS_LEFT}m (00:00 UTC)" || true
+            *Reset In:* ${HOURS_LEFT}h ${MINS_LEFT}m (00:00 UTC)"
+            
+            if [[ -n "$TG_MSG_ID" ]]; then
+                curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+                -d chat_id="${TELEGRAM_CHAT_ID}" \
+                -d message_id="${TG_MSG_ID}" \
+                -d parse_mode="Markdown" \
+                -d text="$REJECT_TEXT" || true
+            else
+                curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+                -d chat_id="${TELEGRAM_CHAT_ID}" \
+                -d message_thread_id="${TELEGRAM_TOPIC_ID}" \
+                -d parse_mode="Markdown" \
+                -d text="$REJECT_TEXT" || true
+            fi
 
             exit 1
           fi
@@ -166,7 +193,6 @@ jobs:
           jq --arg user "$ACTOR" --arg date "$CURRENT_DATE" --argjson runs "$NEW_RUNS" \
             'if .[$user] then .[$user][$date] = $runs else .[$user] = {($date): $runs} end' "$COUNTER_FILE" > tmp.json && mv tmp.json "$COUNTER_FILE"
 
-          # --- NOTIFY SUCCESSFUL QUEUE ---
           if [[ "$IS_ADMIN" == "true" ]]; then
             QUOTA_INFO="Unlimited ♾️"
           else
@@ -174,19 +200,36 @@ jobs:
             QUOTA_INFO="$NEW_RUNS / $LIMIT (Left: $REMAINING)"
           fi
 
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_CHAT_ID}" \
-            -d message_thread_id="${TELEGRAM_TOPIC_ID}" \
-            -d parse_mode="Markdown" \
-            -d text="✅ *Build Request Accepted*
-            *Device:* \`$DEVICE\`
-            *Type:* \`$BUILD_TYPE\`
-            *Variant:* \`$BUILD_VARIANT\`
-            *Dirty:* \`$DIRTY_BUILD\`
-            *Clean:* \`$CLEAN_BUILD\`
-            *User:* \`$ACTOR\`
-            *Quota Usage:* $QUOTA_INFO" || true
+          if [[ -n "$TG_USER_ID" ]]; then
+              USER_TAG="[$ACTOR](tg://user?id=$TG_USER_ID)"
+          else
+              USER_TAG="\`$ACTOR\`"
+          fi
 
+          # --- ACCEPT MESSAGE ---
+          ACCEPT_TEXT="✅ *Build Request Accepted*
+          *Device:* \`$DEVICE\`
+          *Type:* \`$BUILD_TYPE\`
+          *Variant:* \`$BUILD_VARIANT\`
+          *FSGen:* \`$FSGEN_STATUS\`
+          *Dirty:* \`$DIRTY_BUILD\`
+          *Clean:* \`$CLEAN_BUILD\`
+          *User:* $USER_TAG
+          *Quota Usage:* \`$QUOTA_INFO\`"
+
+          if [[ -n "$TG_MSG_ID" ]]; then
+              curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+              -d chat_id="${TELEGRAM_CHAT_ID}" \
+              -d message_id="${TG_MSG_ID}" \
+              -d parse_mode="Markdown" \
+              -d text="$ACCEPT_TEXT"
+          else
+              curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+              -d chat_id="${TELEGRAM_CHAT_ID}" \
+              -d message_thread_id="${TELEGRAM_TOPIC_ID}" \
+              -d parse_mode="Markdown" \
+              -d text="$ACCEPT_TEXT"
+          fi
 
       - name: Commit Counter Update
         run: |
@@ -204,13 +247,49 @@ jobs:
     concurrency:
       group: shared-vps-builder
       cancel-in-progress: false
-    timeout-minutes: 480 
+    timeout-minutes: 480
+    env:
+      TG_MSG_ID: ${{ needs.check-limit.outputs.msg_id }} 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Save Message ID
+        run: |
+          echo "$TG_MSG_ID" > .tg_msg_id
+          echo "Saved TG_MSG_ID ($TG_MSG_ID) to .tg_msg_id"
+
       - name: Prepare Scripts
         run: chmod +x builder/*.sh
+
+      - name: Notify Sync Start
+        if: env.TG_MSG_ID != ''
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [[ -n "${{ env.TG_USER_ID }}" ]]; then
+             USER_TAG="[${{ env.REQUESTER || github.actor }}](tg://user?id=${{ env.TG_USER_ID }})"
+          else
+             USER_TAG="\`${{ env.REQUESTER || github.actor }}\`"
+          fi
+
+          # --- SYNC MESSAGE ---
+          SYNC_TEXT="🔄 *Syncing Source...*
+          *Device:* \`$DEVICE\`
+          *Type:* \`$BUILD_TYPE\`
+          *Variant:* \`$BUILD_VARIANT\`
+          *FSGen:* \`${{ env.FSGEN_STATUS }}\`
+          *Dirty:* \`$DIRTY_BUILD\`
+          *Clean:* \`$CLEAN_BUILD\`
+          *User:* $USER_TAG
+          Please wait..."
+
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+          -d chat_id="${TELEGRAM_CHAT_ID}" \
+          -d message_id="${TG_MSG_ID}" \
+          -d parse_mode="Markdown" \
+          -d text="$SYNC_TEXT" > /dev/null || true
 
       - name: Sync Source
         run: |
@@ -223,15 +302,11 @@ jobs:
         run: |
           source builder/config.sh
           TARGET_FILE="$ROOTDIR/build/soong/fsgen/Android.bp"
-          echo "Targeting: $TARGET_FILE"
-          
+          echo "Targeting: $TARGET_FILE"          
           if [ -f "$TARGET_FILE" ]; then
             echo "⚠️ Backing up and patching FSGen..."
             cp "$TARGET_FILE" "$GITHUB_WORKSPACE/Android.bp.bak"
-            
-            # Inject 'enabled: false,' after the name definition
             sed -i '/name: "soong_filesystem_creator",/a \    enabled: false,' "$TARGET_FILE"
-            
             echo "✅ Patch applied:"
             grep -A 2 "soong_filesystem_creator" "$TARGET_FILE"
           else
@@ -256,7 +331,6 @@ jobs:
           source builder/config.sh
           TARGET_FILE="$ROOTDIR/build/soong/fsgen/Android.bp"
           BACKUP_FILE="$GITHUB_WORKSPACE/Android.bp.bak"
-          
           if [ -f "$BACKUP_FILE" ]; then
             echo "♻️ Restoring original Android.bp..."
             cp -f "$BACKUP_FILE" "$TARGET_FILE"
@@ -266,8 +340,7 @@ jobs:
             echo "No backup file found to restore."
           fi
 
-      # This part was previously severely broken
-      - name: Handle Large Artifacts (Telegram/PixelDrain)
+      - name: Upload Artifacts
         if: success()
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
@@ -278,48 +351,67 @@ jobs:
           echo ">>> Uploading to external storage..."
           bash builder/smart_upload.sh ${{ env.DEVICE }}
 
-      - name: Set Build Date
-        if: success()
-        run: echo "BUILD_DATE=$(date +'%Y%m%d')" >> $GITHUB_ENV
-
-      # - name: Upload Artifact to GitHub
-      #   if: success()
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: AfterlifeOS-${{ env.DEVICE }}-${{ env.BUILD_DATE }}-${{ env.BUILD_VARIANT }}
-      #     # Only upload small files/info to GitHub Artifacts to save storage
-      #     path: |
-      #       source/out/target/product/${{ env.DEVICE }}/AfterlifeOS*.zip
-
-      - name: 🚨 Notify Workflow Failure
+      - name: Notify Workflow Failure
         if: failure()
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_TOPIC_ID: ${{ secrets.TELEGRAM_TOPIC_ID }}
         run: |
-          # Avoid duplicate notification if build.sh failed (it handles its own)
+          # Define path to sync log file (must match what sync.sh creates)
+          SYNC_LOG_FILE="${GITHUB_WORKSPACE}/sync_failure.log"
+
           if [[ "$CURRENT_STAGE" == "Building ROM" ]]; then
             echo "⚠️ Failure occurred in Build ROM stage. Notification handled by build.sh. Skipping global alert."
             exit 0
+          elif [[ "$CURRENT_STAGE" == "Syncing Source" ]]; then
+            echo "⚠️ Failure occurred in Syncing Source stage. Uploading log..."
+            # Check if log file exists and upload it
+            if [ -f "$SYNC_LOG_FILE" ]; then
+                # Need to use the tg_upload_log function, so source tg_utils.sh
+                source builder/tg_utils.sh
+                tg_upload_log "$SYNC_LOG_FILE" "Sync Failure Log - ${DEVICE}" "$TELEGRAM_CHAT_ID" || true
+                echo "Sync failure log uploaded."
+            else
+                echo "Sync failure log not found at $SYNC_LOG_FILE."
+            fi
           fi
 
           ACTOR="${{ env.REQUESTER }}"
           if [[ -z "$ACTOR" ]]; then ACTOR="${{ github.actor }}"; fi
 
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+          if [[ -n "${{ env.TG_USER_ID }}" ]]; then
+             USER_TAG="[${{ env.REQUESTER || github.actor }}](tg://user?id=${{ env.TG_USER_ID }})"
+          else
+             USER_TAG="\`${{ env.REQUESTER || github.actor }}\`"
+          fi
+
+          if [[ -n "$TG_MSG_ID" ]]; then
+             METHOD="editMessageText"
+             ID_PARAM="-d message_id=$TG_MSG_ID"
+          else
+             METHOD="sendMessage"
+             ID_PARAM=""
+          fi
+          
+          # --- FAILURE MESSAGE ---
+          FAIL_TEXT="❌ *AfterlifeOS Build FAILED*
+          *Device:* \`$DEVICE\`
+          *Type:* \`$BUILD_TYPE\`
+          *Variant:* \`$BUILD_VARIANT\`
+          *Dirty:* \`$DIRTY_BUILD\`
+          *Clean:* \`$CLEAN_BUILD\`
+          *FSGen:* \`${{ env.FSGEN_STATUS }}\`
+          *User:* $USER_TAG
+          *Stage:* \`${CURRENT_STAGE:-Initialization/Setup}\`
+          *Link:* [View Action Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/$METHOD" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
+            $ID_PARAM \
             -d message_thread_id="${TELEGRAM_TOPIC_ID}" \
             -d parse_mode="Markdown" \
-            -d text="❌ *Workflow FAILED*
-            *Device:* \`${{ env.DEVICE }}\`
-            *Type:* \`${{ env.BUILD_TYPE }}\`
-            *Variant:* \`${{ env.BUILD_VARIANT }}\`
-            *Dirty:* \`${{ env.DIRTY_BUILD }}\`
-            *Clean:* \`${{ env.CLEAN_BUILD }}\`
-            *User:* \`$ACTOR\`
-            *Stage:* ${{ env.CURRENT_STAGE || 'Initialization/Setup' }}
-            *Link:* [View Action Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" || true
+            -d text="$FAIL_TEXT" || true
 
       - name: Notify Workflow Cancellation
         if: cancelled()
@@ -330,16 +422,35 @@ jobs:
         run: |
           ACTOR="${{ env.REQUESTER }}"
           if [[ -z "$ACTOR" ]]; then ACTOR="${{ github.actor }}"; fi
+          
+          if [[ -n "${{ env.TG_USER_ID }}" ]]; then
+             USER_TAG="[${{ env.REQUESTER || github.actor }}](tg://user?id=${{ env.TG_USER_ID }})"
+          else
+             USER_TAG="\`${{ env.REQUESTER || github.actor }}\`"
+          fi
 
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+          if [[ -n "$TG_MSG_ID" ]]; then
+             METHOD="editMessageText"
+             ID_PARAM="-d message_id=$TG_MSG_ID"
+          else
+             METHOD="sendMessage"
+             ID_PARAM=""
+          fi
+          
+          # --- CANCEL MESSAGE ---
+          CANCEL_TEXT="⚠️ *AfterlifeOS Build Cancelled*
+          *Device:* \`$DEVICE\`
+          *Type:* \`$BUILD_TYPE\`
+          *Variant:* \`$BUILD_VARIANT\`
+          *FSGen:* \`${{ env.FSGEN_STATUS }}\`
+          *Dirty:* \`$DIRTY_BUILD\`
+          *Clean:* \`$CLEAN_BUILD\`
+          *User:* $USER_TAG
+          *Stage:* \`${CURRENT_STAGE:-Initialization}\`"
+
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/$METHOD" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
+            $ID_PARAM \
             -d message_thread_id="${TELEGRAM_TOPIC_ID}" \
             -d parse_mode="Markdown" \
-            -d text="⚠️ *Workflow Cancelled*
-            *Device:* \`${{ env.DEVICE }}\`
-            *Type:* \`${{ env.BUILD_TYPE }}\`
-            *Variant:* \`${{ env.BUILD_VARIANT }}\`
-            *Dirty:* \`${{ env.DIRTY_BUILD }}\`
-            *Clean:* \`${{ env.CLEAN_BUILD }}\`
-            *User:* \`$ACTOR\`
-            *Stage:* ${{ env.CURRENT_STAGE || 'Initialization' }}" || true
+            -d text="$CANCEL_TEXT" || true

@@ -6,9 +6,18 @@
 # Inherits: TELEGRAM_TOKEN, TELEGRAM_CHAT_ID from environment
 
 source builder/tg_utils.sh
+source builder/config.sh
 
 DEVICE="$1"
-OUT_DIR="source/out/target/product/${DEVICE}"
+OUT_DIR="$ROOTDIR/out/target/product/${DEVICE}"
+
+# Determine Builder Name / Tag
+BUILDER_NAME="${GITHUB_ACTOR:-Unknown}"
+if [ -n "$TG_USER_ID" ]; then
+    USER_TAG="<a href='tg://user?id=$TG_USER_ID'>$BUILDER_NAME</a>"
+else
+    USER_TAG="<code>$BUILDER_NAME</code>"
+fi
 
 # Fix: Get the MOST RECENT zip file (handling multiple files case)
 ZIP_PATH=$(ls -t "$OUT_DIR"/AfterlifeOS*.zip 2>/dev/null | head -n 1)
@@ -20,6 +29,7 @@ if [ -z "$ZIP_PATH" ]; then
 fi
 
 FILE_SIZE=$(stat -c%s "$ZIP_PATH")
+FILE_SIZE_GB=$(awk -v bytes="$FILE_SIZE" 'BEGIN {printf "%.2f GB", bytes/1073741824}')
 FILE_NAME=$(basename "$ZIP_PATH")
 
 echo "Found: $FILE_NAME"
@@ -49,8 +59,42 @@ upload_to_gofile() {
 if [ "$FILE_SIZE" -gt "$LIMIT_BYTES" ]; then
     echo "⚠️ Bypass GitHub Artifacts (Storage Full/Limit). Uploading to Gofile..."
     
-    tg_send_message "📦 *Artifact Upload Started*
-Uploading to Gofile server... This may take a while."
+    # Read Message ID from previous step
+    MSG_ID=$(cat "${WORKSPACE}/.tg_msg_id" 2>/dev/null)
+    
+    # Determine FSGen Status String
+    if [ "${DISABLE_FSGEN}" == "true" ]; then
+        FSGEN_STATUS="Disabled"
+    else
+        FSGEN_STATUS="Enabled"
+    fi
+
+    # HTML Upload Message
+    UPLOAD_MSG="📦 <b>Artifact Upload Started</b>
+<b>Device:</b> <code>${DEVICE}</code>
+<b>Type:</b> <code>${BUILD_TYPE}</code>
+<b>Variant:</b> <code>${BUILD_VARIANT:-Unknown}</code>
+<b>FSGen:</b> <code>${FSGEN_STATUS}</code>
+<b>Dirty:</b> <code>${DIRTY_BUILD}</code>
+<b>Clean:</b> <code>${CLEAN_BUILD}</code>
+Uploading to Gofile server..."
+
+    if [ -z "$MSG_ID" ]; then
+        echo "⚠️ Message ID not found. Falling back to new message."
+        tg_send_message "$UPLOAD_MSG" "$TELEGRAM_CHAT_ID" "HTML"
+    else
+        tg_edit_message "$MSG_ID" "🚀 <b>Build Success!</b>
+<b>Device:</b> <code>${DEVICE}</code>
+<b>Type:</b> <code>${BUILD_TYPE}</code>
+<b>Variant:</b> <code>${BUILD_VARIANT:-Unknown}</code>
+<b>FSGen:</b> <code>${FSGEN_STATUS}</code>
+<b>Dirty:</b> <code>${DIRTY_BUILD}</code>
+<b>Clean:</b> <code>${CLEAN_BUILD}</code>
+<b>Size:</b> <code>${FILE_SIZE_GB}</code>
+
+📦 <b>Uploading artifact to Gofile...</b>
+Please wait..." "$TELEGRAM_CHAT_ID" "HTML"
+    fi
 
     DOWNLOAD_LINK=$(upload_to_gofile "$ZIP_PATH")
 
@@ -64,28 +108,41 @@ Uploading to Gofile server... This may take a while."
         
         # Calculate additional info
         MD5SUM=$(md5sum "$ZIP_PATH" | awk '{print $1}')
-        FILE_SIZE_HUMAN=$(ls -sh "$ZIP_PATH" | awk '{print $1}')
 
-        # Send Success Message
-        SUCCESS_MSG="✅ *AfterlifeOS Gofile Upload Complete!*
-*Device:* \`${DEVICE}\`
-*Type:* \`${BUILD_TYPE}\`
-*Variant:* \`${BUILD_VARIANT:-Unknown}\`
-*Build by:* \`${GITHUB_ACTOR:-Unknown}\`
-*Size:* \`${FILE_SIZE_HUMAN}\`
-*MD5:* \`${MD5SUM}\`
+        # Send Success Message (HTML)
+        SUCCESS_MSG="✅ <b>AfterlifeOS Build and Upload Complete!</b>
+<b>Device:</b> <code>${DEVICE}</code>
+<b>Type:</b> <code>${BUILD_TYPE}</code>
+<b>Variant:</b> <code>${BUILD_VARIANT:-Unknown}</code>
+<b>FSGen:</b> <code>${FSGEN_STATUS}</code>
+<b>Dirty:</b> <code>${DIRTY_BUILD}</code>
+<b>Clean:</b> <code>${CLEAN_BUILD}</code>
+<b>Build by:</b> $USER_TAG
+<b>Size:</b> <code>${FILE_SIZE_GB}</code>
+<b>MD5:</b> <code>${MD5SUM}</code>
 
-[Download from Gofile](${DOWNLOAD_LINK})"
+<a href='${DOWNLOAD_LINK}'>Download from Gofile</a>"
 
-        tg_send_message "$SUCCESS_MSG"
-        
-        # REMOVE the original zip so GitHub Action doesn't fail trying to upload it
-        rm "$ZIP_PATH"
-        echo "Original zip removed to prevent GitHub upload failure."
+        if [ -z "$MSG_ID" ]; then
+             tg_send_message "$SUCCESS_MSG" "$TELEGRAM_CHAT_ID" "HTML"
+        else
+             tg_edit_message "$MSG_ID" "$SUCCESS_MSG" "$TELEGRAM_CHAT_ID" "HTML"
+        fi
         
     else
         echo "❌ Gofile Upload Failed."
-        tg_send_message "❌ *Gofile Upload Failed!* Please check logs."
+        
+        FAIL_MSG="❌ <b>Gofile Upload Failed!</b>
+<b>Device:</b> <code>${DEVICE}</code>
+<b>Build Success, but Upload Failed.</b>
+<b>Build by:</b> $USER_TAG
+Check logs for details."
+
+        if [ -z "$MSG_ID" ]; then
+            tg_send_message "$FAIL_MSG" "$TELEGRAM_CHAT_ID" "HTML"
+        else
+            tg_edit_message "$MSG_ID" "$FAIL_MSG" "$TELEGRAM_CHAT_ID" "HTML"
+        fi
         # Keep zip so manual intervention is possible
         exit 1
     fi
