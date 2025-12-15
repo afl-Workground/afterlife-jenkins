@@ -23,6 +23,17 @@ on:
         options:
           - Test
           - Release
+      GAPPS_VARIANT:
+        description: 'GApps Variant'
+        required: true
+        default: 'default'
+        type: choice
+        options:
+          - default
+          - false
+          - core
+          - basic
+          - true
       LOCAL_MANIFEST_URL:
         description: 'URL to Local Manifest XML'
         required: true
@@ -54,13 +65,14 @@ env:
   DEVICE: ${{ inputs.DEVICE || github.event.client_payload.DEVICE }}
   BUILD_TYPE: ${{ inputs.BUILD_TYPE || github.event.client_payload.BUILD_TYPE }}
   BUILD_VARIANT: ${{ inputs.BUILD_VARIANT || github.event.client_payload.BUILD_VARIANT }}
+  GAPPS_VARIANT: ${{ inputs.GAPPS_VARIANT || github.event.client_payload.GAPPS_VARIANT }}
   LOCAL_MANIFEST_URL: ${{ inputs.LOCAL_MANIFEST_URL || github.event.client_payload.LOCAL_MANIFEST_URL }}
   CLEAN_BUILD: ${{ inputs.CLEAN_BUILD || github.event.client_payload.CLEAN_BUILD }}
   DIRTY_BUILD: ${{ inputs.DIRTY_BUILD || github.event.client_payload.DIRTY_BUILD }}
   DISABLE_FSGEN: ${{ inputs.DISABLE_FSGEN || github.event.client_payload.DISABLE_FSGEN }}
   REQUESTER: ${{ github.event.client_payload.REQUESTER }}
-  TG_MSG_ID: ${{ github.event.client_payload.TG_MSG_ID }}
-  TG_USER_ID: ${{ github.event.client_payload.TG_USER_ID }}
+  TG_MSG_ID: ${{ github.event.client_payload.TG_META.msg_id }}
+  TG_USER_ID: ${{ github.event.client_payload.TG_META.id }}
 
 jobs:
   check-limit:
@@ -106,6 +118,17 @@ jobs:
               FSGEN_STATUS="Enabled"
           fi
           echo "FSGEN_STATUS=$FSGEN_STATUS" >> $GITHUB_ENV
+
+          # Determine GApps Display
+          case "${{ env.GAPPS_VARIANT }}" in
+            "true") GAPPS_DISPLAY="Full" ;;
+            "false") GAPPS_DISPLAY="Vanilla" ;;
+            "core") GAPPS_DISPLAY="Core" ;;
+            "basic") GAPPS_DISPLAY="Basic" ;;
+            "default") GAPPS_DISPLAY="Default" ;;
+            *) GAPPS_DISPLAY="${{ env.GAPPS_VARIANT }}" ;;
+          esac
+          echo "GAPPS_DISPLAY=$GAPPS_DISPLAY" >> $GITHUB_ENV
 
           # --- 1. IDENTIFY USER ROLE ---
           if [[ -n "$REQUESTER" ]]; then
@@ -211,6 +234,7 @@ jobs:
           *Device:* \`$DEVICE\`
           *Type:* \`$BUILD_TYPE\`
           *Variant:* \`$BUILD_VARIANT\`
+          *GApps:* \`$GAPPS_DISPLAY\`
           *FSGen:* \`$FSGEN_STATUS\`
           *Dirty:* \`$DIRTY_BUILD\`
           *Clean:* \`$CLEAN_BUILD\`
@@ -399,6 +423,7 @@ jobs:
           *Device:* \`$DEVICE\`
           *Type:* \`$BUILD_TYPE\`
           *Variant:* \`$BUILD_VARIANT\`
+          *GApps:* \`${{ env.GAPPS_DISPLAY }}\`
           *Dirty:* \`$DIRTY_BUILD\`
           *Clean:* \`$CLEAN_BUILD\`
           *FSGen:* \`${{ env.FSGEN_STATUS }}\`
@@ -442,6 +467,7 @@ jobs:
           *Device:* \`$DEVICE\`
           *Type:* \`$BUILD_TYPE\`
           *Variant:* \`$BUILD_VARIANT\`
+          *GApps:* \`${{ env.GAPPS_DISPLAY }}\`
           *FSGen:* \`${{ env.FSGEN_STATUS }}\`
           *Dirty:* \`$DIRTY_BUILD\`
           *Clean:* \`$CLEAN_BUILD\`

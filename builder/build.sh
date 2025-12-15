@@ -14,12 +14,76 @@ export CCACHE_DIR="$CCACHE_DIR"
 echo "[*] Setting up Environment..."
 source build/envsetup.sh
 
+# --- GAPPS INJECTION LOGIC ---
+if [ ! -z "$GAPPS_VARIANT" ] && [ "$GAPPS_VARIANT" != "default" ]; then
+    echo "[*] Handling GApps Variant: $GAPPS_VARIANT"
+    
+    MK_FILE=""
+    TRACK_FILE="${ROOTDIR}/tracked_paths_${DEVICE}.txt"
+
+    # 1. Priority: Check tracked paths (Optimized)
+    if [ -f "$TRACK_FILE" ]; then
+        # Read tracked paths and look for the makefile inside device trees
+        while IFS= read -r path; do
+            if [[ "$path" == device/* ]]; then
+                TARGET="$path/afterlife_${DEVICE}.mk"
+                if [ -f "$TARGET" ]; then
+                    MK_FILE="$TARGET"
+                    break
+                fi
+            fi
+        done < "$TRACK_FILE"
+    fi
+
+    # 2. Fallback: Global search (Safety Net)
+    if [ -z "$MK_FILE" ]; then
+        echo "    -> Target not found in tracked paths. Scanning 'device' directory..."
+        MK_FILE=$(find device -type f -name "afterlife_${DEVICE}.mk" 2>/dev/null | head -n 1)
+    fi
+
+    if [ -f "$MK_FILE" ]; then
+        echo "    -> Found Device Makefile: $MK_FILE"
+        
+        # Prepare the Make flag string
+        NEW_FLAG="AFTERLIFE_GAPPS := $GAPPS_VARIANT"
+        
+        # Check if the flag already exists in the file
+        if grep -q "AFTERLIFE_GAPPS :=" "$MK_FILE"; then
+            echo "    -> Updating existing flag..."
+            sed -i "s|AFTERLIFE_GAPPS :=.*|$NEW_FLAG|g" "$MK_FILE"
+        else
+            echo "    -> Appending new flag..."
+            # Append to end of file, ensuring a newline before it
+            sed -i -e '$a\' -e "$NEW_FLAG" "$MK_FILE"
+        fi
+        
+        # Verify
+        grep "AFTERLIFE_GAPPS :=" "$MK_FILE"
+    else
+        echo "    [!] Warning: afterlife_${DEVICE}.mk not found! GApps flag might not be applied."
+    fi
+else
+    echo "[*] GApps Variant is Default or Unset. Using device tree configuration."
+fi
+
+source build/envsetup.sh
+
 # Determine FSGen Status String
 if [ "${DISABLE_FSGEN}" == "true" ]; then
     FSGEN_STATUS="Disabled"
 else
     FSGEN_STATUS="Enabled"
 fi
+
+# Determine GApps Display
+case "${GAPPS_VARIANT}" in
+    "true") GAPPS_DISPLAY="Full" ;;
+    "false") GAPPS_DISPLAY="Vanilla" ;;
+    "core") GAPPS_DISPLAY="Core" ;;
+    "basic") GAPPS_DISPLAY="Basic" ;;
+    "default") GAPPS_DISPLAY="Default" ;;
+    *) GAPPS_DISPLAY="${GAPPS_VARIANT}" ;;
+esac
 
 # CLEAN_BUILD Logic
 # Enforce Admin restriction for full wipes
@@ -105,6 +169,7 @@ START_MSG="🚀 *AfterlifeOS Build Started!*
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\`
 *Variant:* \`${BUILD_VARIANT}\`
+*GApps:* \`${GAPPS_DISPLAY}\`
 *FSGen:* \`${FSGEN_STATUS}\`
 *Dirty:* \`${DIRTY_BUILD}\`
 *Clean:* \`${CLEAN_BUILD}\`
@@ -185,6 +250,7 @@ fi
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\`
 *Variant:* \`${BUILD_VARIANT}\`
+*GApps:* \`${GAPPS_DISPLAY}\`
 *FSGen:* \`${FSGEN_STATUS}\`
 *Dirty:* \`${DIRTY_BUILD}\`
 *Clean:* \`${CLEAN_BUILD}\`
@@ -266,6 +332,7 @@ if [ $BUILD_STATUS -eq 0 ] && [ ! -z "$ZIP_FILE_CHECK" ] && [ -f "$ZIP_FILE_CHEC
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\`
 *Variant:* \`${BUILD_VARIANT}\`
+*GApps:* \`${GAPPS_DISPLAY}\`
 *FSGen:* \`${FSGEN_STATUS}\`
 *Dirty:* \`${DIRTY_BUILD}\`
 *Clean:* \`${CLEAN_BUILD}\`
@@ -315,6 +382,7 @@ else
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\`
 *Variant:* \`${BUILD_VARIANT}\`
+*GApps:* \`${GAPPS_DISPLAY}\`
 *FSGen:* \`${FSGEN_STATUS}\`
 *Dirty:* \`${DIRTY_BUILD}\`
 *Clean:* \`${CLEAN_BUILD}\`

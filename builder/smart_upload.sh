@@ -69,11 +69,22 @@ if [ "$FILE_SIZE" -gt "$LIMIT_BYTES" ]; then
         FSGEN_STATUS="Enabled"
     fi
 
+    # Determine GApps Display
+    case "${GAPPS_VARIANT}" in
+        "true") GAPPS_DISPLAY="Full" ;;
+        "false") GAPPS_DISPLAY="Vanilla" ;;
+        "core") GAPPS_DISPLAY="Core" ;;
+        "basic") GAPPS_DISPLAY="Basic" ;;
+        "default") GAPPS_DISPLAY="Default" ;;
+        *) GAPPS_DISPLAY="${GAPPS_VARIANT}" ;;
+    esac
+
     # HTML Upload Message
     UPLOAD_MSG="📦 <b>Artifact Upload Started</b>
 <b>Device:</b> <code>${DEVICE}</code>
 <b>Type:</b> <code>${BUILD_TYPE}</code>
 <b>Variant:</b> <code>${BUILD_VARIANT:-Unknown}</code>
+<b>GApps:</b> <code>${GAPPS_DISPLAY}</code>
 <b>FSGen:</b> <code>${FSGEN_STATUS}</code>
 <b>Dirty:</b> <code>${DIRTY_BUILD}</code>
 <b>Clean:</b> <code>${CLEAN_BUILD}</code>
@@ -87,6 +98,7 @@ Uploading to Gofile server..."
 <b>Device:</b> <code>${DEVICE}</code>
 <b>Type:</b> <code>${BUILD_TYPE}</code>
 <b>Variant:</b> <code>${BUILD_VARIANT:-Unknown}</code>
+<b>GApps:</b> <code>${GAPPS_DISPLAY}</code>
 <b>FSGen:</b> <code>${FSGEN_STATUS}</code>
 <b>Dirty:</b> <code>${DIRTY_BUILD}</code>
 <b>Clean:</b> <code>${CLEAN_BUILD}</code>
@@ -126,6 +138,7 @@ Please wait..." "$TELEGRAM_CHAT_ID" "HTML"
 <b>Device:</b> <code>${DEVICE}</code>
 <b>Type:</b> <code>${BUILD_TYPE}</code>
 <b>Variant:</b> <code>${BUILD_VARIANT:-Unknown}</code>
+<b>GApps:</b> <code>${GAPPS_DISPLAY}</code>
 <b>FSGen:</b> <code>${FSGEN_STATUS}</code>
 <b>Dirty:</b> <code>${DIRTY_BUILD}</code>
 <b>Clean:</b> <code>${CLEAN_BUILD}</code>
