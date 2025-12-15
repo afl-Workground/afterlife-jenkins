@@ -109,6 +109,18 @@ Please wait..." "$TELEGRAM_CHAT_ID" "HTML"
         # Calculate additional info
         MD5SUM=$(md5sum "$ZIP_PATH" | awk '{print $1}')
 
+        # Check for JSON Link (Release Build)
+        JSON_LINK_HTML=""
+        if [ -f "$ROOTDIR/.json_link" ]; then
+            JSON_LINK_RAW=$(cat "$ROOTDIR/.json_link")
+            if [ ! -z "$JSON_LINK_RAW" ]; then
+                JSON_LINK_HTML="
+📄 <a href='${JSON_LINK_RAW}'>View OTA JSON</a>"
+            fi
+            # Clean up
+            rm "$ROOTDIR/.json_link"
+        fi
+
         # Send Success Message (HTML)
         SUCCESS_MSG="✅ <b>AfterlifeOS Build and Upload Complete!</b>
 <b>Device:</b> <code>${DEVICE}</code>
@@ -119,7 +131,7 @@ Please wait..." "$TELEGRAM_CHAT_ID" "HTML"
 <b>Clean:</b> <code>${CLEAN_BUILD}</code>
 <b>Build by:</b> $USER_TAG
 <b>Size:</b> <code>${FILE_SIZE_GB}</code>
-<b>MD5:</b> <code>${MD5SUM}</code>
+<b>MD5:</b> <code>${MD5SUM}</code>${JSON_LINK_HTML}
 
 <a href='${DOWNLOAD_LINK}'>Download from Gofile</a>"
 

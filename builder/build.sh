@@ -129,27 +129,10 @@ fi
 
 # --- TRAP FOR CANCELLATION ---
 function handle_cancel() {
-    echo " [!] Received Termination Signal (User Cancelled?)"
+    echo " [!] Received Termination Signal (User Cancelled)"
     
-    # Calculate duration
-    local END_TIME=$(date +"%s")
-    local DIFF=$((END_TIME - BUILD_START_TIMESTAMP))
-    local H=$(($DIFF / 3600))
-    local M=$((($DIFF % 3600) / 60))
-    
-    local CANCEL_MSG="🚫 *AfterlifeOS Build Cancelled!*
-*Device:* \`${DEVICE}\`
-*Type:* \`${BUILD_TYPE}\`
-*Variant:* \`${BUILD_VARIANT}\`
-*FSGen:* \`${FSGEN_STATUS}\`
-*Dirty:* \`${DIRTY_BUILD}\`
-*Clean:* \`${CLEAN_BUILD}\`
-*User:* $USER_TAG
-*Duration:* ${H}h ${M}m
-
-[View Action Log](${JOB_URL})"
-    
-    tg_edit_message "$MSG_ID" "$CANCEL_MSG"
+    # Just kill the processes. 
+    # Notification is handled reliably by 'Notify Workflow Cancellation' in afterlife_build.yml
     
     # Kill monitor
     if [ ! -z "$MONITOR_PID" ]; then
@@ -291,8 +274,33 @@ if [ $BUILD_STATUS -eq 0 ] && [ ! -z "$ZIP_FILE_CHECK" ] && [ -f "$ZIP_FILE_CHEC
 *MD5:* \`${MD5SUM}\`
 *Duration:* ${HOURS}h ${MINUTES}m"
 
+    # --- RELEASE VARIANT LOGIC (JSON UPLOAD) ---
+    JSON_LINK_TEXT=""
+    if [ "$BUILD_VARIANT" = "Release" ]; then
+        JSON_FILE="${SRC_OUT}/${DEVICE}.json"
+        
+        if [ -f "$JSON_FILE" ]; then
+            echo "[*] Release Build Detected. Uploading OTA JSON..."
+            # TELEGRAM_OTA_TOPIC_ID must be set in env/config, otherwise defaults to main topic
+            JSON_LINK=$(tg_upload_json "$JSON_FILE" "OTA Json - ${DEVICE} (${BUILD_TYPE})" "$TELEGRAM_CHAT_ID" "$TELEGRAM_OTA_TOPIC_ID")
+            
+            if [ ! -z "$JSON_LINK" ]; then
+                echo "[*] JSON Uploaded: $JSON_LINK"
+                # Save link for smart_upload.sh
+                echo "$JSON_LINK" > "${ROOTDIR}/.json_link"
+                
+                JSON_LINK_TEXT="
+📄 [View OTA JSON]($JSON_LINK)"
+            else
+                echo "[!] Failed to get JSON Link."
+            fi
+        else
+            echo "[!] Release build but ${DEVICE}.json not found in ${SRC_OUT}"
+        fi
+    fi
+
     # Standard Case: Processing upload via smart_upload.sh
-    SUCCESS_MSG="${BASE_MSG}
+    SUCCESS_MSG="${BASE_MSG}${JSON_LINK_TEXT}
 
 🚀 *Build Complete. Processing upload...*
 Please wait for the final download link."
@@ -319,12 +327,15 @@ else
     tg_edit_message "$MSG_ID" "$FAILURE_MSG"
 
     # Try to find the error log
-    ERROR_LOG="${ROOTDIR}/out/error.log"
-    if [ ! -f "$ERROR_LOG" ]; then
+    if [ -f "${ROOTDIR}/out/error.log" ]; then
+        ERROR_LOG="${ROOTDIR}/out/error.log"
+    else
         # If no specific error log, take the tail of our build log
         echo "out/error.log not found, using tail of build log..."
-        tail -n 200 "$LOG_FILE" > build_error_snippet.log
-        ERROR_LOG="build_error_snippet.log"
+        # Ensure filesystem buffers are flushed before tailing
+        sync
+        ERROR_LOG="${ROOTDIR}/build_error_snippet.log"
+        tail -n 200 "$LOG_FILE" > "$ERROR_LOG"
     fi
     
     tg_upload_log "$ERROR_LOG" "Build Failure Log - ${DEVICE}"

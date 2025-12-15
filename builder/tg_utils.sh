@@ -87,3 +87,49 @@ function tg_upload_log() {
         -F parse_mode="Markdown" \
         -F disable_web_page_preview="true"
 }
+
+function tg_upload_json() {
+    local file_path="$1"
+    local caption="$2"
+    local chat_id="${3:-$TELEGRAM_CHAT_ID}"
+    local topic_id="$4"
+    
+    if [ ! -f "$file_path" ]; then
+        return
+    fi
+    
+    # Prepare Topic/Thread ID
+    local thread_arg=""
+    if [[ ! -z "$topic_id" ]]; then
+        thread_arg="-F message_thread_id=${topic_id}"
+    else
+        # Fallback to global topic if specific OTA topic is not set
+        if [[ ! -z "$TELEGRAM_TOPIC_ID" ]]; then
+            thread_arg="-F message_thread_id=${TELEGRAM_TOPIC_ID}"
+            topic_id="$TELEGRAM_TOPIC_ID" # Set for link generation
+        fi
+    fi
+
+    # Send and capture response
+    local response=$(curl -s -F document=@"${file_path}" "${TG_API}/sendDocument" \
+        -F chat_id="${chat_id}" \
+        ${thread_arg} \
+        -F caption="${caption}" \
+        -F parse_mode="Markdown" \
+        -F disable_web_page_preview="true")
+
+    # Extract Message ID
+    local msg_id=$(echo "$response" | grep -o '"message_id":[0-9]*' | cut -d':' -f2)
+    
+    if [ ! -z "$msg_id" ]; then
+        # Construct Link
+        # Remove -100 prefix from chat_id for link
+        local clean_chat_id=$(echo "$chat_id" | sed 's/^-100//')
+        
+        if [ ! -z "$topic_id" ]; then
+            echo "https://t.me/c/${clean_chat_id}/${topic_id}/${msg_id}"
+        else
+            echo "https://t.me/c/${clean_chat_id}/${msg_id}"
+        fi
+    fi
+}

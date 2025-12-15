@@ -116,7 +116,7 @@ echo "[*] Starting Sync..."
 # --prune : CRITICAL. Deletes project files that are no longer in the manifest.
 #           This removes Maintainer A's device tree when Maintainer B builds.
 # --force-sync : Overwrite changes if necessary.
-repo sync -c -j8 --force-sync --optimized-fetch --no-clone_bundle --no-tags --prune --retry-fetches=5 2>&1 | tee -a "$SYNC_LOG_FILE"
+repo sync -c -j8 --force-sync --optimized-fetch --no-clone-bundle --no-tags --prune --retry-fetches=5 2>&1 | tee -a "$SYNC_LOG_FILE"
 
 if [ $? -ne 0 ]; then
     echo "[!] repo sync failed. Check log for details." | tee -a "$SYNC_LOG_FILE"
