@@ -353,6 +353,7 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_TOPIC_ID: ${{ secrets.TELEGRAM_TOPIC_ID }}
+          TELEGRAM_LOG_TOPIC_ID: ${{ secrets.TELEGRAM_LOG_TOPIC_ID }}
         run: |
           echo "CURRENT_STAGE=Building ROM" >> $GITHUB_ENV
           echo ">>> Starting Build for ${{ env.DEVICE }}..."
