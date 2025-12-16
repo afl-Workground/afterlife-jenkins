@@ -119,7 +119,6 @@ fi
 
 function fetch_progress() {
     # 1. Read the last line from the clean FILTERED_LOG
-    #    This file is created in real-time by the build process using grep filter
     local RAW_LOG=$(tail -n 1 "$FILTERED_LOG" 2>/dev/null)
 
     if [ -z "$RAW_LOG" ]; then
@@ -127,27 +126,30 @@ function fetch_progress() {
         return
     fi
 
-    # 2. Check if this is the Kati/Soong phase (Setup/Analyzing)
-    # Filter keywords: finishing, analyzing, bootstrap, including, initializing
-    # Also 'writing legacy' (specific to Kati: "writing legacy Make module rules")
-    if echo "$RAW_LOG" | grep -qE "including|initializing|finishing|analyzing|bootstrap|writing legacy"; then
-        echo "Initializing Build System (Kati/Soong)..."
-        return
-    fi
+    # 2. Parse CSV format: Percentage,Counts,Description
+    # Log format example: 100,2/2,analyzing Android.bp files
+    IFS=',' read -r PCT COUNTS DESC <<< "$RAW_LOG"
 
-    # 3. If it passes the filter above, this is the Ninja phase (Compilation)
-    # Extract Percentage (digits before comma)
-    local PCT=$(echo "$RAW_LOG" | cut -d',' -f1)
-    # Extract Counts (digits after comma)
-    local COUNTS=$(echo "$RAW_LOG" | cut -d',' -f2)
-    
-    # Validation: Safety net if parsing fails
+    # Validation
     if [ -z "$PCT" ] || [ -z "$COUNTS" ]; then
-        echo "Initializing..." # Default fallback if the format doesn't match Ninja yet
+        echo "Initializing..."
         return
     fi
 
-    # 4. Generate Progress Bar (10 blocks total)
+    # 3. Check for Setup/Kati phases based on Description
+    # Keywords found in pre-ninja output
+    if echo "$DESC" | grep -qE "bootstrap|analyzing|initializing|including|finishing|writing packaging|writing legacy"; then
+        # Format: 🔨 Setup: analyzing Android.bp files (100%)
+        # Truncate desc if too long
+        local SHORT_DESC=${DESC:0:30}
+        if [ "${#DESC}" -gt 30 ]; then SHORT_DESC="${SHORT_DESC}..."; fi
+        
+        echo "🔨 Setup: ${SHORT_DESC} (${PCT}%)"
+        return
+    fi
+
+    # 4. Standard Ninja Phase (Compilation) -> Generate Progress Bar
+    # 10 blocks total
     local FILLED=$((PCT / 10))
     local EMPTY=$((10 - FILLED))
     local BAR=""
@@ -277,12 +279,18 @@ set -o pipefail
         # 1. Strip ANSI Colors (simple regex approach for standard build output)
         gsub(/\x1b\[[0-9;]*m/, "");
         
-        # 2. Extract Percentage and Counts
-        # Format input expected: "[ 12% 123/456] ..."
-        match($0, /([0-9]+)% ([0-9]+\/[0-9]+)/, arr);
+        # 2. Extract Percentage, Counts, and Description
+        # Format input expected: "[ 12% 123/456] analyzing..."
+        # Regex captures: (12) (123/456) (analyzing...)
+        match($0, /\[\s*([0-9]+)% ([0-9]+\/[0-9]+)\] (.*)/, arr);
         
         if (arr[1] != "" && arr[2] != "") {
-             print arr[1] "," arr[2] > logfile;
+             # Remove leading whitespace from description if any
+             desc = arr[3];
+             gsub(/^[ \t]+/, "", desc);
+             
+             # CSV: Pct,Counts,Description
+             print arr[1] "," arr[2] "," desc > logfile;
              fflush(logfile);
         }
     }')
