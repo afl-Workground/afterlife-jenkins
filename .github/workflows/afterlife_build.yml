@@ -236,7 +236,7 @@ jobs:
           fi
 
           # --- ACCEPT MESSAGE ---
-          ACCEPT_TEXT="✅ *Build Request Accepted*
+          ACCEPT_TEXT="⏳ *Build Accepted & Queued*
           *Device:* \`$DEVICE\`
           *Type:* \`$BUILD_TYPE\`
           *Variant:* \`$BUILD_VARIANT\`
@@ -245,7 +245,9 @@ jobs:
           *Dirty:* \`$DIRTY_BUILD\`
           *Clean:* \`$CLEAN_BUILD\`
           *User:* $USER_TAG
-          *Quota Usage:* \`$QUOTA_INFO\`"
+          *Quota Usage:* \`$QUOTA_INFO\`
+          
+          _Waiting for builder availability..._"
 
           if [[ -n "$TG_MSG_ID" ]]; then
               curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
