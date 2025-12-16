@@ -223,7 +223,7 @@ trap 'handle_cancel' SIGINT SIGTERM
 echo "[*] Running goafterlife for device ${DEVICE}..."
 LOG_FILE="${ROOTDIR}/build_progress.log" # Use absolute path in ROOTDIR
 FILTERED_LOG="${ROOTDIR}/monitoring_progress.log" # File dedicated to holding clean progress logs
-rm -f "$LOG_FILE" "$FILTERED_LOG"
+rm -f "$LOG_FILE" "$FILTERED_LOG" "${ROOTDIR}/out/error.log" "${ROOTDIR}/build_error_snippet.log"
 
 # MARK STATE FOR NEXT BUILD (Lazy Cleanup)
 echo "${DEVICE}" > "${ROOTDIR}/.last_build_device"
