@@ -85,6 +85,9 @@ if [ "$FILE_SIZE" -gt "$LIMIT_BYTES" ]; then
         *) GAPPS_DISPLAY="${GAPPS_VARIANT}" ;;
     esac
 
+    # Read Duration
+    BUILD_DURATION=$(cat "${ROOTDIR}/.build_duration" 2>/dev/null || echo "Unknown")
+
     # HTML Upload Message
     UPLOAD_MSG="📦 <b>Artifact Upload Started</b>
 <b>Device:</b> <code>${DEVICE}</code>
@@ -154,7 +157,8 @@ Please wait...
 <b>Clean:</b> <code>${CLEAN_BUILD}</code>
 <b>Build by:</b> $USER_TAG
 <b>Size:</b> <code>${FILE_SIZE_GB}</code>
-<b>MD5:</b> <code>${MD5SUM}</code>${JSON_LINK_HTML}
+<b>MD5:</b> <code>${MD5SUM}</code>
+<b>Duration:</b> <code>${BUILD_DURATION}</code>${JSON_LINK_HTML}
 
 <a href='${DOWNLOAD_LINK}'>Download from Gofile</a>
 
@@ -173,6 +177,7 @@ Please wait...
 <b>Device:</b> <code>${DEVICE}</code>
 <b>Build Success, but Upload Failed.</b>
 <b>Build by:</b> $USER_TAG
+<b>Duration:</b> <code>${BUILD_DURATION}</code>
 Check logs for details.
 
 <a href='${JOB_URL}'>View Action Log</a>"

@@ -68,24 +68,49 @@ function tg_upload_log() {
     local file_path="$1"
     local caption="$2"
     local chat_id="${3:-$TELEGRAM_CHAT_ID}"
+    local topic_id="$4" # New optional argument
     
     if [ ! -f "$file_path" ]; then
-        echo "Log file not found: $file_path"
+        echo "Log file not found: $file_path" >&2
         return
     fi
     
-    # Prepare Topic/Thread ID if available
+    # Prepare Topic/Thread ID
     local thread_arg=""
-    if [[ ! -z "$TELEGRAM_TOPIC_ID" ]]; then
-        thread_arg="-F message_thread_id=${TELEGRAM_TOPIC_ID}"
+    if [[ ! -z "$topic_id" ]]; then
+        thread_arg="-F message_thread_id=${topic_id}"
+    else
+        # Fallback to global topic if specific LOG topic is not set
+        if [[ ! -z "$TELEGRAM_TOPIC_ID" ]]; then
+            thread_arg="-F message_thread_id=${TELEGRAM_TOPIC_ID}"
+            topic_id="$TELEGRAM_TOPIC_ID"
+        fi
     fi
 
-    curl -s --progress-bar -F document=@"${file_path}" "${TG_API}/sendDocument" \
+    # Upload and capture response (Silent curl, no progress bar to keep output clean for variable capture)
+    local response=$(curl -s -F document=@"${file_path}" "${TG_API}/sendDocument" \
         -F chat_id="${chat_id}" \
         ${thread_arg} \
         -F caption="${caption}" \
         -F parse_mode="Markdown" \
-        -F disable_web_page_preview="true"
+        -F disable_web_page_preview="true")
+
+    # Extract Message ID
+    local msg_id=$(echo "$response" | grep -o '"message_id":[0-9]*' | cut -d':' -f2)
+    
+    if [ ! -z "$msg_id" ]; then
+        # Construct Link
+        # Remove -100 prefix from chat_id for link
+        local clean_chat_id=$(echo "$chat_id" | sed 's/^-100//')
+        
+        if [ ! -z "$topic_id" ]; then
+            echo "https://t.me/c/${clean_chat_id}/${topic_id}/${msg_id}"
+        else
+            echo "https://t.me/c/${clean_chat_id}/${msg_id}"
+        fi
+    else
+        echo "Error uploading log: $response" >&2
+    fi
 }
 
 function tg_upload_json() {

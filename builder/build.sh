@@ -313,6 +313,7 @@ BUILD_END_TIMESTAMP=$(date +"%s")
 DIFFERENCE=$((BUILD_END_TIMESTAMP - BUILD_START_TIMESTAMP))
 HOURS=$(($DIFFERENCE / 3600))
 MINUTES=$((($DIFFERENCE % 3600) / 60))
+echo "${HOURS}h ${MINUTES}m" > "${ROOTDIR}/.build_duration"
 
 # --- VERIFY BUILD SUCCESS ---
 # We verify success by checking if the output ZIP actually exists.
@@ -389,6 +390,29 @@ Please wait for the final download link."
 else
     echo "BUILD FAILED! (Exit Code: $BUILD_STATUS or No Zip File)"
     
+    # 1. Prepare Error Log FIRST
+    if [ -f "${ROOTDIR}/out/error.log" ]; then
+        ERROR_LOG="${ROOTDIR}/out/error.log"
+    else
+        echo "out/error.log not found, using tail of build log..."
+        sync
+        ERROR_LOG="${ROOTDIR}/build_error_snippet.log"
+        tail -n 200 "$LOG_FILE" > "$ERROR_LOG"
+    fi
+    
+    # 2. Upload Log to Specific Topic (if configured)
+    # If TELEGRAM_LOG_TOPIC_ID is not set, fallback to TELEGRAM_TOPIC_ID
+    LOG_TARGET_TOPIC="${TELEGRAM_LOG_TOPIC_ID:-$TELEGRAM_TOPIC_ID}"
+    
+    LOG_LINK=$(tg_upload_log "$ERROR_LOG" "Build Failure Log - ${DEVICE}" "$TELEGRAM_CHAT_ID" "$LOG_TARGET_TOPIC")
+    
+    LOG_LINK_TEXT=""
+    if [ ! -z "$LOG_LINK" ]; then
+        LOG_LINK_TEXT="
+[Download Error Log](${LOG_LINK})"
+    fi
+
+    # 3. Send Failure Notification
     FAILURE_MSG="❌ *AfterlifeOS Build FAILED!*
 *Device:* \`${DEVICE}\`
 *Type:* \`${BUILD_TYPE}\`
@@ -400,24 +424,10 @@ else
 *Build by:* $USER_TAG
 *Duration:* ${HOURS}h ${MINUTES}m
 
-*Check the attached log for details:*
-[View Detailed Log](${JOB_URL})"
+*Check the logs:*
+[View Detailed Log](${JOB_URL})${LOG_LINK_TEXT}"
 
     tg_edit_message "$MSG_ID" "$FAILURE_MSG"
-
-    # Try to find the error log
-    if [ -f "${ROOTDIR}/out/error.log" ]; then
-        ERROR_LOG="${ROOTDIR}/out/error.log"
-    else
-        # If no specific error log, take the tail of our build log
-        echo "out/error.log not found, using tail of build log..."
-        # Ensure filesystem buffers are flushed before tailing
-        sync
-        ERROR_LOG="${ROOTDIR}/build_error_snippet.log"
-        tail -n 200 "$LOG_FILE" > "$ERROR_LOG"
-    fi
-    
-    tg_upload_log "$ERROR_LOG" "Build Failure Log - ${DEVICE}"
     
     # Clean up before exit
     # LAZY CLEANUP: We DO NOT clean here anymore. 
