@@ -339,7 +339,9 @@ if [ $BUILD_STATUS -eq 0 ] && [ ! -z "$ZIP_FILE_CHECK" ] && [ -f "$ZIP_FILE_CHEC
 *Build by:* $USER_TAG
 *Size:* \`${FILE_SIZE}\`
 *MD5:* \`${MD5SUM}\`
-*Duration:* ${HOURS}h ${MINUTES}m"
+*Duration:* ${HOURS}h ${MINUTES}m
+
+[View Action Log](${JOB_URL})"
 
     # --- RELEASE VARIANT LOGIC (JSON UPLOAD) ---
     JSON_LINK_TEXT=""

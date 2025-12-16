@@ -27,6 +27,7 @@ fi
 # Fix: Get the MOST RECENT zip file (handling multiple files case)
 ZIP_PATH=$(ls -t "$OUT_DIR"/AfterlifeOS*.zip 2>/dev/null | head -n 1)
 LIMIT_BYTES=0 # Force Gofile upload (GitHub Storage Quota Full)
+JOB_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
 if [ -z "$ZIP_PATH" ]; then
     echo "SmartUpload: No zip file found in $OUT_DIR. Skipping."
@@ -93,7 +94,9 @@ if [ "$FILE_SIZE" -gt "$LIMIT_BYTES" ]; then
 <b>FSGen:</b> <code>${FSGEN_STATUS}</code>
 <b>Dirty:</b> <code>${DIRTY_BUILD}</code>
 <b>Clean:</b> <code>${CLEAN_BUILD}</code>
-Uploading to Gofile server..."
+Uploading to Gofile server...
+
+<a href='${JOB_URL}'>View Action Log</a>"
 
     if [ -z "$MSG_ID" ]; then
         echo "⚠️ Message ID not found. Falling back to new message."
@@ -110,7 +113,9 @@ Uploading to Gofile server..."
 <b>Size:</b> <code>${FILE_SIZE_GB}</code>
 
 📦 <b>Uploading artifact to Gofile...</b>
-Please wait..." "$TELEGRAM_CHAT_ID" "HTML"
+Please wait...
+
+<a href='${JOB_URL}'>View Action Log</a>" "$TELEGRAM_CHAT_ID" "HTML"
     fi
 
     DOWNLOAD_LINK=$(upload_to_gofile "$ZIP_PATH")
@@ -151,7 +156,9 @@ Please wait..." "$TELEGRAM_CHAT_ID" "HTML"
 <b>Size:</b> <code>${FILE_SIZE_GB}</code>
 <b>MD5:</b> <code>${MD5SUM}</code>${JSON_LINK_HTML}
 
-<a href='${DOWNLOAD_LINK}'>Download from Gofile</a>"
+<a href='${DOWNLOAD_LINK}'>Download from Gofile</a>
+
+<a href='${JOB_URL}'>View Action Log</a>"
 
         if [ -z "$MSG_ID" ]; then
              tg_send_message "$SUCCESS_MSG" "$TELEGRAM_CHAT_ID" "HTML"
@@ -166,7 +173,9 @@ Please wait..." "$TELEGRAM_CHAT_ID" "HTML"
 <b>Device:</b> <code>${DEVICE}</code>
 <b>Build Success, but Upload Failed.</b>
 <b>Build by:</b> $USER_TAG
-Check logs for details."
+Check logs for details.
+
+<a href='${JOB_URL}'>View Action Log</a>"
 
         if [ -z "$MSG_ID" ]; then
             tg_send_message "$FAIL_MSG" "$TELEGRAM_CHAT_ID" "HTML"

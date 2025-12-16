@@ -316,7 +316,8 @@ jobs:
           *Dirty:* \`$DIRTY_BUILD\`
           *Clean:* \`$CLEAN_BUILD\`
           *User:* $USER_TAG
-          Please wait..."
+          Please wait...
+          *Link:* [View Action Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
 
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
           -d chat_id="${TELEGRAM_CHAT_ID}" \
@@ -481,7 +482,8 @@ jobs:
           *Dirty:* \`$DIRTY_BUILD\`
           *Clean:* \`$CLEAN_BUILD\`
           *User:* $USER_TAG
-          *Stage:* \`${CURRENT_STAGE:-Initialization}\`"
+          *Stage:* \`${CURRENT_STAGE:-Initialization}\`
+          *Link:* [View Action Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
 
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/$METHOD" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
