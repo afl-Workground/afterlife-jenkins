@@ -14,6 +14,16 @@ export CCACHE_DIR="$CCACHE_DIR"
 echo "[*] Setting up Environment..."
 source build/envsetup.sh
 
+# --- CLEANUP LINGERING DAEMONS ---
+# Fixes "Received Termination Signal" due to OOM/Process conflict from previous builds
+echo "[*] Cleaning up lingering daemons..."
+pkill -f "java" || true
+pkill -f "kotlin" || true
+pkill -f "gradle" || true
+pkill -f "jack-server" || true
+# Ensure no orphaned monitor loops are running
+pkill -f "build_progress.log" || true
+
 # --- GAPPS INJECTION LOGIC ---
 if [ ! -z "$GAPPS_VARIANT" ] && [ "$GAPPS_VARIANT" != "default" ]; then
     echo "[*] Handling GApps Variant: $GAPPS_VARIANT"
