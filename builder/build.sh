@@ -274,19 +274,20 @@ MONITOR_PID=$!
 set -o pipefail
 (
     $BUILD_CMD 2>&1 | tee "$LOG_FILE" | \
-    tee >(grep --line-buffered -P '^\[\s*[0-9]+% [0-9]+/[0-9]+' | \
+    tee >(grep --line-buffered -P '\[\s*[0-9]+% [0-9]+/[0-9]+' | \
     awk -v logfile="${ROOTDIR}/monitoring_progress.log" '{
         # 1. Strip ANSI Colors (simple regex approach for standard build output)
         gsub(/\x1b\[[0-9;]*m/, "");
         
         # 2. Extract Percentage, Counts, and Description
-        # Format input expected: "[ 12% 123/456] analyzing..."
-        # Regex captures: (12) (123/456) (analyzing...)
-        match($0, /\[\s*([0-9]+)% ([0-9]+\/[0-9]+)\] (.*)/, arr);
+        # Regex captures: (12) (123/456) (optional time) (analyzing...)
+        # Relaxed regex: Find the pattern anywhere in the line
+        # Tolerates text like "11m4s remaining" inside the brackets
+        match($0, /\[\s*([0-9]+)% ([0-9]+\/[0-9]+)([^]]*)\] (.*)/, arr);
         
         if (arr[1] != "" && arr[2] != "") {
              # Remove leading whitespace from description if any
-             desc = arr[3];
+             desc = arr[4];
              gsub(/^[ \t]+/, "", desc);
              
              # CSV: Pct,Counts,Description
