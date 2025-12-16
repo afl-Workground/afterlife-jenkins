@@ -83,6 +83,8 @@ jobs:
     outputs:
       is_admin: ${{ steps.check_role.outputs.is_admin }}
       msg_id: ${{ env.TG_MSG_ID }}
+      fsgen_status: ${{ steps.check_role.outputs.fsgen_status }}
+      gapps_display: ${{ steps.check_role.outputs.gapps_display }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -155,6 +157,8 @@ jobs:
           fi
           
           echo "is_admin=$IS_ADMIN" >> $GITHUB_OUTPUT
+          echo "fsgen_status=$FSGEN_STATUS" >> $GITHUB_OUTPUT
+          echo "gapps_display=$GAPPS_DISPLAY" >> $GITHUB_OUTPUT
 
           COUNTER_FILE=".github/workflow_counter.json"
           CURRENT_DATE=$(date +%Y-%m-%d)
@@ -275,7 +279,9 @@ jobs:
       cancel-in-progress: false
     timeout-minutes: 480
     env:
-      TG_MSG_ID: ${{ needs.check-limit.outputs.msg_id }} 
+      TG_MSG_ID: ${{ needs.check-limit.outputs.msg_id }}
+      FSGEN_STATUS: ${{ needs.check-limit.outputs.fsgen_status }}
+      GAPPS_DISPLAY: ${{ needs.check-limit.outputs.gapps_display }} 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -305,6 +311,7 @@ jobs:
           *Device:* \`$DEVICE\`
           *Type:* \`$BUILD_TYPE\`
           *Variant:* \`$BUILD_VARIANT\`
+          *GApps:* \`${{ env.GAPPS_DISPLAY }}\`
           *FSGen:* \`${{ env.FSGEN_STATUS }}\`
           *Dirty:* \`$DIRTY_BUILD\`
           *Clean:* \`$CLEAN_BUILD\`

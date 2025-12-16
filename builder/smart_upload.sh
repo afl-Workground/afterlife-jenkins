@@ -12,7 +12,12 @@ DEVICE="$1"
 OUT_DIR="$ROOTDIR/out/target/product/${DEVICE}"
 
 # Determine Builder Name / Tag
-BUILDER_NAME="${GITHUB_ACTOR:-Unknown}"
+if [ -n "$REQUESTER" ]; then
+    BUILDER_NAME="$REQUESTER"
+else
+    BUILDER_NAME="${GITHUB_ACTOR:-Unknown}"
+fi
+
 if [ -n "$TG_USER_ID" ]; then
     USER_TAG="<a href='tg://user?id=$TG_USER_ID'>$BUILDER_NAME</a>"
 else
