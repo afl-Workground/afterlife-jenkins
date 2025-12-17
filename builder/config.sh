@@ -15,7 +15,7 @@ export WORKSPACE=${WORKSPACE:-$(pwd)}
 # export ROOTDIR="${WORKSPACE}/source" <--- OLD (DANGEROUS)
 export ROOTDIR="${HOME}/android/source" # <--- NEW (SAFE & PERSISTENT & PORTABLE)
 
-export CCACHE_DIR="${HOME}/android/ccache" # Also keep ccache outside
+export CCACHE_DIR="${HOME}/.ccache" # Also keep ccache outside
 
 # Ccache Configuration
 export USE_CCACHE=1

@@ -8,8 +8,9 @@ cd $ROOTDIR
 
 echo "[*] Setting up Ccache Directory..."
 # Ensure the persistent directory exists before envsetup uses it
-mkdir -p "$CCACHE_DIR"
-export CCACHE_DIR="$CCACHE_DIR"
+if [ ! -d "$CCACHE_DIR" ]; then
+    mkdir -p "$CCACHE_DIR"
+fi
 
 echo "[*] Setting up Environment..."
 source build/envsetup.sh
