@@ -1,69 +1,191 @@
 pipeline {
     agent any
 
-    // QUEUE CONFIGURATION
     options {
-        // Key: Only allow 1 build to run at a time.
-        // Other builds will be queued.
         disableConcurrentBuilds()
-        
-        // Optional: Add timestamps to logs
+        timeout(time: 12, unit: 'HOURS')
         timestamps()
-    }
-
-    environment {
-        BUILD_HOSTNAME = "jenkins-builder"
-        // You should configure TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
-        // in Jenkins Global Configuration (System) or using Jenkins Credentials.
-        TELEGRAM_BOT_TOKEN = credentials('telegram-bot-token')
-        TELEGRAM_CHAT_ID = credentials('telegram-chat-id')
+        ansiColor('xterm')
     }
 
     parameters {
-        string(name: 'DEVICE', defaultValue: 'bacon', description: 'Device Codename (e.g., raven, redfin)')
-        string(name: 'BUILD_TYPE', defaultValue: 'userdebug', description: 'Build Type (user/userdebug/eng)')
-        choice(name: 'BUILD_VARIANT', choices: ['test', 'release'], description: 'Build Variant (test/release)')
-        string(name: 'LOCAL_MANIFEST_URL', defaultValue: '', description: 'REQUIRED: URL to a raw XML local manifest (e.g., from GitHub Gist or Raw file)')
-        string(name: 'TELEGRAM_TOPIC_ID', defaultValue: '', description: 'Optional: Telegram Topic ID (Thread ID) for notifications')
-        booleanParam(name: 'CLEAN_BUILD', defaultValue: false, description: 'Wipe out directory before build? (Not recommended for CI speed)')
-        booleanParam(name: 'DIRTY_BUILD', defaultValue: false, description: 'Force Dirty Build (Skip manifest wipe) manually.')
+        string(name: 'DEVICE', defaultValue: '', description: 'Device Codename')
+        string(name: 'LOCAL_MANIFEST_URL', defaultValue: '', description: 'Manifest XML URL')
+        choice(name: 'BUILD_TYPE', choices: ['userdebug', 'user', 'eng'], description: 'Build Type')
+        choice(name: 'BUILD_VARIANT', choices: ['Test', 'Release'], description: 'Build Variant')
+        choice(name: 'GAPPS_VARIANT', choices: ['default', 'false', 'core', 'basic', 'true'], description: 'GApps Variant')
+        string(name: 'CLEAN_BUILD', defaultValue: 'false', description: 'Clean Build')
+        string(name: 'DIRTY_BUILD', defaultValue: 'false', description: 'Dirty Build')
+        string(name: 'DISABLE_FSGEN', defaultValue: 'false', description: 'Disable FSGen')
+        
+        // Metadata from Bot
+        string(name: 'REQUESTER', defaultValue: 'Jenkins', description: 'Requester Name')
+        string(name: 'TG_USER_ID', defaultValue: '', description: 'Telegram User ID')
+        string(name: 'TG_MSG_ID', defaultValue: '', description: 'Telegram Message ID to Edit')
+    }
+
+    environment {
+        // --- CREDENTIALS (Set in Jenkins) ---
+        TELEGRAM_TOKEN = credentials('telegram-token')
+        TELEGRAM_CHAT_ID = credentials('telegram-chat-id')
+        // ID Topic untuk Notifikasi Umum, Log Error, dan JSON OTA
+        TELEGRAM_TOPIC_ID = '0'        // Default Topic
+        TELEGRAM_LOG_TOPIC_ID = '123'  // Ganti dengan ID Topic Log
+        TELEGRAM_OTA_TOPIC_ID = '456'  // Ganti dengan ID Topic OTA
+
+        // --- GLOBAL VARS ---
+        DEVICE = "${params.DEVICE}"
+        BUILD_TYPE = "${params.BUILD_TYPE}"
+        BUILD_VARIANT = "${params.BUILD_VARIANT}"
+        GAPPS_VARIANT = "${params.GAPPS_VARIANT}"
+        CLEAN_BUILD = "${params.CLEAN_BUILD}"
+        DIRTY_BUILD = "${params.DIRTY_BUILD}"
+        DISABLE_FSGEN = "${params.DISABLE_FSGEN}"
+        REQUESTER = "${params.REQUESTER}"
+        TG_MSG_ID = "${params.TG_MSG_ID}"
+        TG_USER_ID = "${params.TG_USER_ID}"
+        
+        // Point to builder scripts (Assuming repo is checked out to workspace) 
+        ROOTDIR = "${WORKSPACE}" 
     }
 
     stages {
-        stage('Validation') {
+        stage('Initialize') {
             steps {
                 script {
-                    if (!params.LOCAL_MANIFEST_URL || params.LOCAL_MANIFEST_URL.trim() == "") {
-                        error "BUILD FAILED: You MUST provide a LOCAL_MANIFEST_URL. This field is required."
+                    // Mapping Display
+                    def gMap = ['true':'Full', 'false':'Vanilla', 'core':'Core', 'basic':'Basic', 'default':'Default']
+                    env.GAPPS_DISPLAY = gMap.get(params.GAPPS_VARIANT, params.GAPPS_VARIANT)
+                    env.FSGEN_STATUS = (params.DISABLE_FSGEN == 'true') ? "Disabled" : "Enabled"
+                    env.DIRTY_STATUS = (params.DIRTY_BUILD == 'true') ? "Yes" : "No"
+                    env.CLEAN_STATUS = (params.CLEAN_BUILD == 'true') ? "Yes" : "No"
+                    
+                    if (params.TG_USER_ID != '') {
+                        env.USER_TAG = "[${params.REQUESTER}](tg://user?id=${params.TG_USER_ID})"
+                    } else {
+                        env.USER_TAG = "`${params.REQUESTER}`"
                     }
                 }
+                sh 'chmod +x builder/*.sh'
             }
         }
 
-        stage('Preparation') {
+        stage('Quota Check') {
             steps {
                 script {
-                    echo "Preparing build for ${params.DEVICE}..."
-                    sh 'chmod +x afterlife-jenkins-setup/builder/*.sh'
+                    withCredentials([usernamePassword(credentialsId: 'github-pat', passwordVariable: 'GH_PASS', usernameVariable: 'GH_USER')]) {
+                        sh '''
+                            git config --global user.email "jenkins@bot.com"
+                            git config --global user.name "Jenkins Bot"
+                            
+                            # Pull latest quota
+                            git pull origin main || true
+
+                            COUNTER_FILE=".github/workflow_counter.json"
+                            TODAY=$(date +%Y-%m-%d)
+                            USER_NAME="${REQUESTER}"
+                            LIMIT=5
+                            
+                            if [ ! -f "$COUNTER_FILE" ]; then echo "{}" > "$COUNTER_FILE"; fi
+
+                            # Check usage
+                            USAGE=$(jq -r --arg user "$USER_NAME" --arg date "$TODAY" 'if .[$user][$date] then .[$user][$date] else 0 end' "$COUNTER_FILE")
+                            
+                            # Basic Admin Check (Hardcoded or fetch via API)
+                            # Assuming standard user for now.
+                            
+                            if [ "$USAGE" -ge "$LIMIT" ]; then
+                                echo "❌ Limit Reached ($USAGE/$LIMIT)"
+                                # Send Reject Message
+                                MSG="🚫 *Build Rejected*\nUser: ${USER_TAG}\nReason: Daily Limit Reached."
+                                curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+                                    -d chat_id="${TELEGRAM_CHAT_ID}" \
+                                    -d message_id="${TG_MSG_ID}" \
+                                    -d parse_mode="Markdown" \
+                                    --data-urlencode "text=$MSG" || true
+                                exit 1
+                            fi
+                            
+                            # Update Quota
+                            NEW_VAL=$((USAGE + 1))
+                            jq --arg user "$USER_NAME" --arg date "$TODAY" --argjson v "$NEW_VAL" \
+                                'if .[$user] then .[$user][$date] = $v else .[$user] = {($date): $v} end' "$COUNTER_FILE" > tmp.json && mv tmp.json "$COUNTER_FILE"
+                            
+                            # Push
+                            git add "$COUNTER_FILE"
+                            git commit -m "Quota update: $USER_NAME ($NEW_VAL)" || true
+                            git push https://${GH_USER}:${GH_PASS}@github.com/${GH_USER}/AfterlifeOS-Builder.git HEAD:main || echo "Push failed, continuing build..."
+                        '''
+                    }
                 }
             }
         }
 
         stage('Sync Source') {
             steps {
-                sh 'bash afterlife-jenkins-setup/builder/sync.sh'
+                script {
+                    // Update Telegram: Syncing
+                    def syncMsg = """
+                    🔄 *Syncing Source...*
+                    *Device:* `${DEVICE}`
+                    *Type:* `${BUILD_TYPE}`
+                    *Variant:* `${BUILD_VARIANT}`
+                    *GApps:* `${GAPPS_DISPLAY}`
+                    *FSGen:* `${FSGEN_STATUS}`
+                    *Dirty:* `${DIRTY_STATUS}`
+                    *Clean:* `${CLEAN_STATUS}`
+                    *User:* ${USER_TAG}
+
+                    Please wait...
+                    *Link:* [View Console](${env.BUILD_URL}console)"""
+                    
+                    writeFile file: 'msg.txt', text: syncMsg
+                    sh '''
+                        if [ ! -z "$TG_MSG_ID" ]; then
+                            TEXT=$(cat msg.txt)
+                            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+                                -d chat_id="${TELEGRAM_CHAT_ID}" \
+                                -d message_id="${TG_MSG_ID}" \
+                                -d parse_mode="Markdown" \
+                                --data-urlencode "text=$TEXT" || true
+                        fi
+                    '''
+                    
+                    // Run Sync
+                    sh 'bash builder/sync.sh'
+                }
+            }
+        }
+
+        stage('Patch FSGen') {
+            when { expression { params.DISABLE_FSGEN == 'true' } }
+            steps {
+                script {
+                    sh '''
+                        source builder/config.sh
+                        TARGET="$ROOTDIR/build/soong/fsgen/Android.bp"
+                        if [ -f "$TARGET" ]; then
+                            cp "$TARGET" "${WORKSPACE}/Android.bp.bak"
+                            sed -i '/name: "soong_filesystem_creator",/a \    enabled: false,' "$TARGET"
+                        fi
+                    '''
+                }
             }
         }
 
         stage('Build ROM') {
             steps {
-                sh 'bash afterlife-jenkins-setup/builder/build.sh'
+                script {
+                    // build.sh handles its own notifications (Start, Progress, Success, Fail)
+                    // We just need to ensure it has the env vars
+                    sh 'bash builder/build.sh'
+                }
             }
         }
 
-        stage('Archive Artifacts') {
+        stage('Upload Artifacts') {
             steps {
-                archiveArtifacts artifacts: 'source/out/target/product/${DEVICE}/*.zip', allowEmptyArchive: true
+                sh 'bash builder/smart_upload.sh'
             }
         }
     }
@@ -71,79 +193,78 @@ pipeline {
     post {
         always {
             script {
-                echo "[*] Cleaning up Local Manifests..."
-                sh 'rm -f source/.repo/local_manifests/jenkins_local_manifest.xml'
+                // Restore FSGen
+                if (params.DISABLE_FSGEN == 'true') {
+                    sh '''
+                        source builder/config.sh
+                        TARGET="$ROOTDIR/build/soong/fsgen/Android.bp"
+                        BACKUP="${WORKSPACE}/Android.bp.bak"
+                        if [ -f "$BACKUP" ]; then
+                            cp -f "$BACKUP" "$TARGET"
+                            rm "$BACKUP"
+                        fi
+                    '''
+                }
+                sh 'rm -f msg.txt'
             }
         }
+        
         failure {
             script {
-                if (env.STAGE_NAME == 'Build ROM') {
-                    echo "⚠️ Failure in 'Build ROM' stage. Notification handled by build.sh. Skipping global alert."
-                    return
-                }
-
-                echo "Sending Telegram notification for FAILED build..."
+                // If build.sh failed properly, it sends a failure log.
+                // But if the Pipeline fails (e.g. Sync error, Script error), we need to notify.
+                // We check if "build.sh" was the cause or something else.
                 
-                def errorLogContent = ""
-                def errorLogFileName = "error.log"
-                def errorFilePath = "source/out/${errorLogFileName}" // Path relative to Jenkins workspace root
+                def failMsg = """
+❌ *Pipeline FAILED*
+*Device:* `${DEVICE}`
+*User:* ${USER_TAG}
+*Link:* [View Console](${env.BUILD_URL}console)"""
                 
-                // If error.log is not found or empty, create a temporary file from console output
-                if (!fileExists(errorFilePath) || readFile(errorFilePath).trim().isEmpty()) {
-                    errorLogFileName = "build_console_error.log"
-                    errorFilePath = "${errorLogFileName}" // Store in root workspace
-                    sh "tail -n 1000 \"${currentBuild.logFile}\" > ${errorFilePath}" // Get last 1000 lines of console log
-                    echo "error.log not found or empty. Created temporary console log file: ${errorFilePath}"
-                } else {
-                    echo "Using error.log from build output: ${errorFilePath}"
-                }
-                
-                // Create caption for the document
-                def caption = """
-                    🚨 *AfterlifeOS Build FAILED!* 🚨
-                    *Project:* ${env.JOB_NAME}
-                    *Build Number:* ${env.BUILD_NUMBER}
-                    *Device:* `${params.DEVICE}`
-                    *Build Type:* `${params.BUILD_TYPE}`
-                    *Build Variant:* `${params.BUILD_VARIANT}`
-                    *Dirty:* `${params.DIRTY_BUILD}`
-                    *Clean:* `${params.CLEAN_BUILD}`
-                    *Reason:* ${currentBuild.result} in stage '${env.STAGE_NAME}'
-                    *Build Link:* ${env.BUILD_URL}
-                    ""
-                
-                // Send log file as a document using curl to Telegram Bot API
-                sh """
-                    curl -s -X POST \
-                    -F document=@${errorFilePath} \
-                    -F chat_id=\"${env.TELEGRAM_CHAT_ID}\" \
-                    -F caption=\"${caption}\" \
-                    -F parse_mode=\"Markdown\" \
-                    \"https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendDocument\"
-                """
-                
-                // Optional: Remove temporary file if created
-                if (fileExists("${errorLogFileName}") && errorLogFileName == "build_console_error.log") {
-                    sh "rm ${errorLogFileName}"
-                }
+                writeFile file: 'fail.txt', text: failMsg
+                sh '''
+                    # Check if build.sh handled it (check for some marker file or similar, optional)
+                    # For now, we aggressively update the status to Fail.
+                    
+                    if [ ! -z "$TG_MSG_ID" ]; then
+                        TEXT=$(cat fail.txt)
+                        curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+                            -d chat_id="${TELEGRAM_CHAT_ID}" \
+                            -d message_id="${TG_MSG_ID}" \
+                            -d parse_mode="Markdown" \
+                            --data-urlencode "text=$TEXT" || true
+                    fi
+                    
+                    # Upload Console Log snippet to Log Topic
+                    tail -n 100 log > snippet.log 2>/dev/null || echo "Log unavailable" > snippet.log
+                    curl -F "chat_id=${TELEGRAM_CHAT_ID}" \
+                         -F "message_thread_id=${TELEGRAM_LOG_TOPIC_ID}" \
+                         -F "document=@snippet.log" \
+                         -F "caption=Pipeline Failure Log" \
+                         "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendDocument" || true
+                '''
             }
         }
-        success {
+
+        aborted {
             script {
-                echo "Sending Telegram notification for SUCCESSFUL build..."
-                def message = """
-                    ✅ *AfterlifeOS Build SUCCESS!* ✅
-                    *Project:* ${env.JOB_NAME}
-                    *Build Number:* ${env.BUILD_NUMBER}
-                    *Device:* `${params.DEVICE}`
-                    *Build Type:* `${params.BUILD_TYPE}`
-                    *Build Variant:* `${params.BUILD_VARIANT}`
-                    *Dirty:* `${params.DIRTY_BUILD}`
-                    *Clean:* `${params.CLEAN_BUILD}`
-                    *Build Link:* ${env.BUILD_URL}
-                    """
-                // Using telegramSend plugin for successful text notification
-                telegramSend text: message, parseMode: 'Markdown'
+                 def cancelMsg = """
+⚠️ *Build CANCELLED*
+*Device:* `${DEVICE}`
+*User:* ${USER_TAG}
+*Link:* [View Console](${env.BUILD_URL}console)"""
+                 
+                 writeFile file: 'cancel.txt', text: cancelMsg
+                 sh '''
+                    if [ ! -z "$TG_MSG_ID" ]; then
+                        TEXT=$(cat cancel.txt)
+                        curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+                            -d chat_id="${TELEGRAM_CHAT_ID}" \
+                            -d message_id="${TG_MSG_ID}" \
+                            -d parse_mode="Markdown" \
+                            --data-urlencode "text=$TEXT" || true
+                    fi
+                 '''
             }
         }
     }
